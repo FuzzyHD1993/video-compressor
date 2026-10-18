@@ -45,7 +45,11 @@ var (
 	semaphore chan struct{}
 )
 
+const appVersion = "1.1.0"
+
 func main() {
+	prepareWorkingDir()
+
 	ffmpegPath := findFFmpeg()
 	if ffmpegPath == "" {
 		log.Fatal("❌ FFmpeg не найден!")
@@ -70,8 +74,9 @@ func main() {
 	http.HandleFunc("/", serveIndex)
 	http.HandleFunc("/upload", uploadHandler(ffmpegPath, encoder))
 	http.HandleFunc("/status", statusHandler)
+	http.HandleFunc("/health", healthHandler(encoder))
 
-	port := envOr("PORT", "8080")
+	port := envOr("PORT", "8095")
 	url := "http://localhost:" + port
 	if os.Getenv("NO_BROWSER") == "" && os.Getenv("DISPLAY") != "" {
 		go openBrowser(url)
@@ -92,11 +97,39 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
-func serveIndex(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "./static/index.html")
+// prepareWorkingDir makes a double-clicked Windows executable keep temp/ and
+// output/ next to itself instead of in the process's inherited working
+// directory (which can be C:\Windows\System32 for shortcuts).
+func prepareWorkingDir() {
+	if runtime.GOOS != "windows" {
+		return
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	if err := os.Chdir(filepath.Dir(exe)); err != nil {
+		log.Printf("⚠️ Не удалось перейти в папку программы: %v", err)
+	}
+}
+
+func healthHandler(encoder string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"status":  "ok",
+			"encoder": encoder,
+			"version": appVersion,
+		})
+	}
 }
 
 func findFFmpeg() string {
+	if path, err := extractEmbeddedFFmpeg(); err != nil {
+		log.Printf("⚠️ Не удалось распаковать встроенный FFmpeg: %v", err)
+	} else if path != "" {
+		return path
+	}
 	if path, err := exec.LookPath("ffmpeg"); err == nil {
 		return path
 	}

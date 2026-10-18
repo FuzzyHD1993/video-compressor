@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -150,5 +151,33 @@ func TestScaleFilter(t *testing.T) {
 	got := scaleFilter(1920, 1080)
 	if !strings.Contains(got, "scale=1920:1080") {
 		t.Errorf("unexpected scale filter: %s", got)
+	}
+}
+
+func TestEmbeddedIndexHTML(t *testing.T) {
+	if len(indexHTML) == 0 {
+		t.Fatal("embedded index.html is empty")
+	}
+	rec := httptest.NewRecorder()
+	serveIndex(rec, httptest.NewRequest("GET", "/", nil))
+	if rec.Code != 200 {
+		t.Errorf("GET / = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Компрессор") {
+		t.Error("embedded index does not look like the UI")
+	}
+}
+
+func TestHealthHandler(t *testing.T) {
+	rec := httptest.NewRecorder()
+	healthHandler("hevc_nvenc")(rec, httptest.NewRequest("GET", "/health", nil))
+	if rec.Code != 200 {
+		t.Fatalf("GET /health = %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{`"status":"ok"`, `"encoder":"hevc_nvenc"`, `"version":"1.1.0"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("health body missing %s: %s", want, body)
+		}
 	}
 }

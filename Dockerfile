@@ -25,7 +25,6 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY --from=builder /app/video-compressor .
-COPY --from=builder /app/static ./static
 
 ENV PORT=8080 \
     NO_BROWSER=1 \

@@ -10,11 +10,16 @@
 /ffmpeg.exe
 /ffmpeg.zip
 /ffmpeg-9.0.1-essentials_build/
+ffmpeg.exe
+video-compressor.exe
 
 # Runtime data
 /temp/
 /output/
 *.part
+
+# Build artifacts / release checksums
+SHA256SUMS
 
 # Editor / OS noise
 .DS_Store
