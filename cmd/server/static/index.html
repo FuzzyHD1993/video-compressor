@@ -1,196 +1,280 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>🎬 Компрессор</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🎬 Компрессор v2</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#0d1117;color:#e6edf3;font-family:sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
-.container{max-width:600px;width:100%;background:#161b22;border-radius:20px;padding:40px;box-shadow:0 20px 60px rgba(0,0,0,0.8);border:1px solid #30363d}
-h1{text-align:center;font-size:32px;margin-bottom:5px}
-.sub{text-align:center;color:#8b949e;font-size:14px;margin-bottom:30px}
-.drop-zone{border:3px dashed #30363d;border-radius:16px;padding:50px 20px;text-align:center;cursor:pointer;transition:.3s;background:#0d1117;margin-bottom:25px}
+body{background:#0d1117;color:#e6edf3;font-family:system-ui,sans-serif;display:flex;justify-content:center;min-height:100vh;padding:24px}
+.container{max-width:760px;width:100%;background:#161b22;border-radius:20px;padding:32px;box-shadow:0 20px 60px rgba(0,0,0,.8);border:1px solid #30363d}
+h1{text-align:center;font-size:30px;margin-bottom:5px}
+.sub{text-align:center;color:#8b949e;font-size:14px;margin-bottom:24px}
+.drop-zone{border:3px dashed #30363d;border-radius:16px;padding:36px 20px;text-align:center;cursor:pointer;transition:.2s;background:#0d1117;margin-bottom:20px}
 .drop-zone:hover{border-color:#58a6ff}
 .drop-zone input{display:none}
-.drop-zone label{cursor:pointer;color:#58a6ff;font-size:18px;font-weight:600}
-.file-info{margin-top:12px;font-size:14px;color:#8b949e}
-.file-selected{color:#58a6ff;font-weight:600}
-.quality-section{margin:25px 0}
-.section-label{font-size:16px;font-weight:600;margin-bottom:12px;color:#e6edf3}
-.quality-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-.quality-btn{padding:16px 10px;background:#0d1117;border:2px solid #30363d;border-radius:12px;color:#e6edf3;cursor:pointer;text-align:center;font-size:15px;font-weight:600;transition:.2s}
-.quality-btn:hover{border-color:#58a6ff;background:#1c2333}
-.quality-btn.active{border-color:#58a6ff;background:#1c2333}
-.quality-btn .q-desc{display:block;font-size:12px;font-weight:400;color:#8b949e;margin-top:4px}
-.btn-compress{width:100%;padding:18px;background:#238636;color:#fff;border:none;border-radius:14px;font-size:20px;font-weight:700;cursor:pointer;transition:.2s;margin:15px 0;letter-spacing:1px}
-.btn-compress:hover:not(:disabled){background:#2ea043;transform:scale(1.02)}
-.btn-compress:disabled{opacity:.5;cursor:not-allowed}
-.status{margin-top:18px;text-align:center;font-size:16px;min-height:40px;padding:10px}
-.status-error{color:#f85149}
-.status-success{color:#3fb950}
-.status-wait{color:#d29922}
-.progress{width:100%;height:8px;background:#21262d;border-radius:4px;margin-top:10px;display:none;overflow:hidden}
-.progress-bar{height:100%;width:0%;background:linear-gradient(90deg,#58a6ff,#1f6feb);border-radius:4px;transition:width .5s}
-.download-link{display:inline-block;margin-top:8px;padding:12px 30px;background:#238636;color:#fff;text-decoration:none;border-radius:10px;font-weight:600;transition:.2s}
-.download-link:hover{background:#2ea043}
-.result{margin-top:16px;padding:16px;background:#0d1117;border:1px solid #30363d;border-radius:12px;display:none}
-.result.show{display:block}
-.result-path{font-size:13px;color:#8b949e;word-break:break-all;margin-bottom:12px}
-.result-actions{display:flex;gap:10px;flex-wrap:wrap}
-.btn-open,.result .download-link{flex:1;min-width:180px;text-align:center;padding:12px 18px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;border:none;text-decoration:none;margin-top:0}
-.btn-open{background:#1f6feb;color:#fff;transition:.2s}
-.btn-open:hover:not(:disabled){background:#388bfd}
-.btn-open:disabled{opacity:.5;cursor:not-allowed}
-.footer{margin-top:20px;text-align:center;font-size:12px;color:#484f58}
+.drop-zone label{cursor:pointer;color:#58a6ff;font-size:17px;font-weight:600}
+.file-info{margin-top:10px;font-size:13px;color:#8b949e;word-break:break-word}
+.section-label{font-size:15px;font-weight:600;margin-bottom:10px;color:#e6edf3}
+.quality-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px}
+.quality-btn{padding:14px 8px;background:#0d1117;border:2px solid #30363d;border-radius:12px;color:#e6edf3;cursor:pointer;text-align:center;font-size:14px;font-weight:600;transition:.2s}
+.quality-btn:hover,.quality-btn.active{border-color:#58a6ff;background:#1c2333}
+.quality-btn .q-desc{display:block;font-size:11px;font-weight:400;color:#8b949e;margin-top:3px}
+.btn{width:100%;padding:15px;border:none;border-radius:12px;font-size:17px;font-weight:700;cursor:pointer;transition:.2s;color:#fff;background:#238636}
+.btn:hover:not(:disabled){background:#2ea043}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-secondary{background:#1f6feb}
+.btn-secondary:hover:not(:disabled){background:#388bfd}
+.batch{margin-top:22px;padding-top:20px;border-top:1px solid #30363d}
+.batch-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+input[type=text]{width:100%;padding:11px 12px;background:#0d1117;border:1px solid #30363d;border-radius:10px;color:#e6edf3;font-size:13px}
+input[type=text]:focus{outline:none;border-color:#58a6ff}
+.status{margin-top:16px;text-align:center;font-size:14px;min-height:24px;color:#d29922}
+.jobs{margin-top:22px;padding-top:18px;border-top:1px solid #30363d}
+.jobs-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.jobs-count{color:#8b949e;font-size:12px}
+.job{background:#0d1117;border:1px solid #30363d;border-radius:12px;padding:13px;margin-bottom:10px}
+.job-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.job-name{font-weight:600;font-size:14px;word-break:break-all}
+.job-meta{color:#8b949e;font-size:11px;margin-top:3px}
+.badge{font-size:11px;padding:3px 8px;border-radius:20px;white-space:nowrap;background:#21262d;color:#8b949e}
+.badge.running{background:#1f6feb;color:#fff}
+.badge.done{background:#238636;color:#fff}
+.badge.error{background:#da3633;color:#fff}
+.badge.canceled{background:#6e7681;color:#fff}
+.progress{width:100%;height:7px;background:#21262d;border-radius:4px;margin-top:9px;overflow:hidden}
+.progress-bar{height:100%;width:0;background:linear-gradient(90deg,#58a6ff,#1f6feb);transition:width .3s}
+.job-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.job-actions a,.job-actions button{padding:8px 13px;border-radius:8px;border:none;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;color:#fff;background:#238636}
+.job-actions .open{background:#1f6feb}
+.job-actions .cancel{background:#da3633}
+.job-actions a:hover{background:#2ea043}
+.job-actions .open:hover{background:#388bfd}
+.job-actions .cancel:hover{background:#f85149}
+.job-error{color:#f85149;font-size:12px;margin-top:8px;word-break:break-word}
+.job-path{color:#8b949e;font-size:11px;margin-top:7px;word-break:break-all}
+.empty{text-align:center;color:#484f58;font-size:13px;padding:14px}
+.footer{margin-top:20px;text-align:center;font-size:11px;color:#484f58}
+@media(max-width:560px){.batch-grid{grid-template-columns:1fr}.container{padding:20px}}
 </style>
 </head>
 <body>
 <div class="container">
 <h1>🎬 Компрессор</h1>
-<div class="sub">Перетащи видео и нажми кнопку</div>
+<div class="sub">Очередь · NVENC / QSV / AMF / CPU · пакетная обработка</div>
+
 <div class="drop-zone" id="dropZone">
-<label for="fileInput">📁 Выберите видео</label>
-<input type="file" id="fileInput" accept="video/*">
-<div class="file-info" id="fileInfo">или перетащите сюда</div>
+<label for="fileInput">📁 Выберите видео (можно несколько)</label>
+<input type="file" id="fileInput" accept="video/*" multiple>
+<div class="file-info" id="fileInfo">или перетащите файлы сюда</div>
 </div>
-<div class="quality-section">
-<div class="section-label">🎯 Качество</div>
-<div class="quality-grid" id="qualityGrid">
-<button class="quality-btn" data-quality="high">🌟 Отличное<span class="q-desc">1080p</span></button>
-<button class="quality-btn active" data-quality="medium">⚖️ Хорошее<span class="q-desc">720p</span></button>
-<button class="quality-btn" data-quality="low">📦 Эконом<span class="q-desc">480p</span></button>
+
+<div class="section-label">🎯 Пресет</div>
+<div class="quality-grid" id="profileGrid">
+<button class="quality-btn" data-profile="fast">🚀 Быстро<span class="q-desc">p2 / veryfast</span></button>
+<button class="quality-btn active" data-profile="balance">⚖️ Баланс<span class="q-desc">p4 / medium</span></button>
+<button class="quality-btn" data-profile="quality">💎 Качество<span class="q-desc">p6 / slow</span></button>
 </div>
+
+<button class="btn" id="compressBtn">⚡ В очередь</button>
+<div class="status" id="status">Выберите файлы</div>
+
+<div class="batch">
+<div class="section-label">📂 Пакетная обработка папки (на сервере)</div>
+<div class="batch-grid">
+<input type="text" id="batchInput" placeholder="Папка: C:\Videos или /mnt/videos">
+<input type="text" id="batchOutput" placeholder="Куда (необязательно)">
 </div>
-<button class="btn-compress" id="compressBtn">⚡ Сжать!</button>
-<div class="status" id="status">Выберите видео</div>
-<div class="progress" id="progress"><div class="progress-bar" id="progressBar"></div></div>
-<div class="result" id="result">
-  <div class="result-path" id="resultPath"></div>
-  <div class="result-actions">
-    <button class="btn-open" id="openFolderBtn">📂 Открыть папку</button>
-    <a class="download-link" id="downloadLink" href="#">⬇️ Скачать</a>
-  </div>
+<button class="btn btn-secondary" id="batchBtn">📂 Сжать всё</button>
 </div>
-<div class="footer">💡 Работает локально · GPU NVENC при наличии</div>
+
+<div class="jobs">
+<div class="jobs-head">
+<div class="section-label" style="margin:0">📋 Очередь</div>
+<div class="jobs-count" id="jobsCount"></div>
 </div>
+<div id="jobsList"><div class="empty">Задач пока нет</div></div>
+</div>
+
+<div class="footer">💡 Работает локально · CPU-задачи ограничены по потокам</div>
+</div>
+
 <script>
 const dz=document.getElementById("dropZone");
 const fi=document.getElementById("fileInput");
+const fileInfo=document.getElementById("fileInfo");
 const cb=document.getElementById("compressBtn");
+const batchBtn=document.getElementById("batchBtn");
 const st=document.getElementById("status");
-const pg=document.getElementById("progress");
-const pb=document.getElementById("progressBar");
-const qb=document.querySelectorAll(".quality-btn");
-const result=document.getElementById("result");
-const resultPath=document.getElementById("resultPath");
-const openBtn=document.getElementById("openFolderBtn");
-const downloadLink=document.getElementById("downloadLink");
-let file=null;
-let quality="medium";
-let jobId=null;
-let interval=null;
-let lastOutputPath="";
+const jobsList=document.getElementById("jobsList");
+const jobsCount=document.getElementById("jobsCount");
+const profileGrid=document.getElementById("profileGrid");
+const batchInput=document.getElementById("batchInput");
+const batchOutput=document.getElementById("batchOutput");
+let files=[];
+let profile="balance";
+let pollTimer=null;
 
 function notify(msg,type){
-st.textContent=msg;
-st.style.color=type==="error"?"#f85149":type==="success"?"#3fb950":"#d29922";
+  st.textContent=msg;
+  st.style.color=type==="error"?"#f85149":type==="success"?"#3fb950":"#d29922";
 }
+function fmtSize(n){return n?(n/1024/1024).toFixed(1)+" MB":"—"}
+function profileLabel(p){return p==="fast"?"Быстро":p==="quality"?"Качество":"Баланс"}
 
+function setFiles(list){
+  files=Array.from(list||[]);
+  if(files.length){
+    fileInfo.textContent="✅ "+files.map(f=>f.name).join(", ");
+    notify("Готово к запуску: "+files.length);
+  }else{
+    fileInfo.textContent="или перетащите файлы сюда";
+  }
+}
+fi.addEventListener("change",()=>setFiles(fi.files));
 dz.addEventListener("dragover",e=>{e.preventDefault();dz.style.borderColor="#58a6ff"});
 dz.addEventListener("dragleave",()=>{dz.style.borderColor="#30363d"});
-dz.addEventListener("drop",e=>{e.preventDefault();dz.style.borderColor="#30363d";if(e.dataTransfer.files.length){file=e.dataTransfer.files[0];document.getElementById("fileInfo").innerHTML="✅ "+file.name;notify("Готов")}});
-fi.addEventListener("change",()=>{if(fi.files.length){file=fi.files[0];document.getElementById("fileInfo").innerHTML="✅ "+file.name;notify("Готов")}});
-qb.forEach(b=>{b.onclick=function(){qb.forEach(x=>x.classList.remove("active"));this.classList.add("active");quality=this.dataset.quality}});
-
-cb.onclick=async function(){
-if(!file){notify("❌ Выберите видео","error");return}
-const fd=new FormData();fd.append("video",file);fd.append("quality",quality);
-this.disabled=true;this.textContent="⏳ Сжатие...";notify("⏳ Обработка...");pb.style.width="0%";
-result.classList.remove("show");lastOutputPath="";
-try{
-const r=await fetch("/upload",{method:"POST",body:fd});
-if(!r.ok)throw new Error(await r.text());
-const d=await r.json();jobId=d.jobId;
-if(interval)clearInterval(interval);interval=setInterval(checkStatus,500);
-}catch(e){notify("❌ "+e.message,"error");this.disabled=false;this.textContent="⚡ Сжать!"}
-}
-
-async function checkStatus(){
-if(!jobId)return;
-try{
-const r=await fetch("/status?jobId="+jobId);
-if(!r.ok){clearInterval(interval);return}
-const job=await r.json();
-pb.style.width=job.progress+"%";
-if(job.status==="done"){
-clearInterval(interval);
-const size=(job.outputSize/1024/1024).toFixed(1);
-lastOutputPath=job.outputPath||(job.outputName?("output/"+job.outputName):"");
-resultPath.textContent="📄 "+lastOutputPath;
-if(job.outputName){
-downloadLink.href="/download?file="+encodeURIComponent(job.outputName);
-}
-result.classList.add("show");
-notify("✅ Готово! Размер: "+size+" MB","success");
-cb.disabled=false;cb.textContent="⚡ Сжать!";
-file=null;fi.value="";document.getElementById("fileInfo").textContent="или перетащите сюда";
-setTimeout(()=>{pg.style.display="none";pb.style.width="0%"},3000);
-}else if(job.status==="error"){
-clearInterval(interval);
-notify("❌ "+job.error,"error");
-cb.disabled=false;cb.textContent="⚡ Сжать!";
-}
-}catch(e){console.log(e)}
-}
-
-openBtn.onclick=openFolder;
-
-async function openFolder(){
-const path=lastOutputPath;
-if(!path){notify("❌ Путь к файлу не найден","error");return}
-openBtn.disabled=true;
-try{
-const r=await fetch("/api/open-folder",{
-method:"POST",
-headers:{"Content-Type":"application/json"},
-body:JSON.stringify({jobId:jobId,path:path}),
+dz.addEventListener("drop",e=>{e.preventDefault();dz.style.borderColor="#30363d";setFiles(e.dataTransfer.files)});
+profileGrid.querySelectorAll(".quality-btn").forEach(b=>{
+  b.onclick=()=>{
+    profileGrid.querySelectorAll(".quality-btn").forEach(x=>x.classList.remove("active"));
+    b.classList.add("active");
+    profile=b.dataset.profile;
+  };
 });
-const d=await r.json().catch(()=>({}));
-if(!r.ok){
-showPathDialog(d.path||path,d.error||("HTTP "+r.status));
-return;
+
+cb.onclick=async()=>{
+  if(!files.length){notify("❌ Выберите видео","error");return}
+  const fd=new FormData();
+  files.forEach(f=>fd.append("file",f));
+  fd.append("profile",profile);
+  cb.disabled=true;cb.textContent="⏳ Загрузка...";notify("⏳ Загрузка файлов...");
+  try{
+    const r=await fetch("/api/jobs",{method:"POST",body:fd});
+    if(!r.ok) throw new Error(await r.text());
+    const d=await r.json();
+    notify("✅ В очереди: "+d.count,"success");
+    setFiles([]);fi.value="";
+    startPolling();refreshJobs();
+  }catch(e){notify("❌ "+e.message,"error")}
+  finally{cb.disabled=false;cb.textContent="⚡ В очередь"}
+};
+
+batchBtn.onclick=async()=>{
+  const input=batchInput.value.trim();
+  if(!input){notify("❌ Укажите папку на сервере","error");return}
+  batchBtn.disabled=true;batchBtn.textContent="⏳ Сканирование...";
+  try{
+    const r=await fetch("/api/batch",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({input_dir:input,output_dir:batchOutput.value.trim(),profile})
+    });
+    if(!r.ok) throw new Error(await r.text());
+    const d=await r.json();
+    notify("✅ В очереди: "+d.count,"success");
+    startPolling();refreshJobs();
+  }catch(e){notify("❌ "+e.message,"error")}
+  finally{batchBtn.disabled=false;batchBtn.textContent="📂 Сжать всё"}
+};
+
+function startPolling(){
+  if(pollTimer)return;
+  pollTimer=setInterval(refreshJobs,1500);
 }
-notify("📂 Папка открыта","success");
-}catch(e){
-showPathDialog(path,e.message);
-}finally{
-openBtn.disabled=false;
+
+const STATUS={
+  queued:{label:"В очереди",cls:"queued"},
+  running:{label:"Обработка",cls:"running"},
+  done:{label:"Готово",cls:"done"},
+  error:{label:"Ошибка",cls:"error"},
+  canceled:{label:"Отменено",cls:"canceled"}
+};
+
+async function refreshJobs(){
+  try{
+    const r=await fetch("/api/jobs");
+    if(!r.ok)return;
+    const list=await r.json();
+    renderJobs(list);
+  }catch(e){/* ignore */}
 }
+
+function renderJobs(list){
+  jobsCount.textContent=list.length?list.length+" задач":"";
+  jobsList.replaceChildren();
+  if(!list.length){
+    const e=document.createElement("div");e.className="empty";e.textContent="Задач пока нет";jobsList.append(e);return;
+  }
+  list.forEach(job=>{
+    const card=document.createElement("div");card.className="job";
+    const top=document.createElement("div");top.className="job-top";
+    const left=document.createElement("div");
+    const name=document.createElement("div");name.className="job-name";name.textContent=job.filename;
+    const meta=document.createElement("div");meta.className="job-meta";
+    meta.textContent=profileLabel(job.profile)+" · "+fmtSize(job.inputSize)+(job.outputSize?" → "+fmtSize(job.outputSize):"");
+    left.append(name,meta);
+    const s=STATUS[job.status]||{label:job.status,cls:""};
+    const badge=document.createElement("span");badge.className="badge "+s.cls;badge.textContent=s.label;
+    top.append(left,badge);
+    card.append(top);
+
+    const prog=document.createElement("div");prog.className="progress";
+    const bar=document.createElement("div");bar.className="progress-bar";bar.style.width=(job.status==="done"?100:job.progress)+"%";
+    prog.append(bar);card.append(prog);
+
+    if(job.error){const er=document.createElement("div");er.className="job-error";er.textContent=job.error;card.append(er)}
+
+    const actions=document.createElement("div");actions.className="job-actions";
+    if(job.status==="queued"||job.status==="running"){
+      const b=document.createElement("button");b.className="cancel";b.textContent="✕ Отменить";
+      b.onclick=()=>cancelJob(job.id);actions.append(b);
+    }
+    if(job.status==="done"&&job.outputName){
+      const dl=document.createElement("a");dl.href="/download?file="+encodeURIComponent(job.outputName);dl.textContent="⬇️ Скачать";actions.append(dl);
+      const op=document.createElement("button");op.className="open";op.textContent="📂 Открыть папку";
+      op.onclick=()=>openFolder(job);actions.append(op);
+    }
+    if(actions.children.length)card.append(actions);
+    if(job.status==="done"&&job.outputPath){const p=document.createElement("div");p.className="job-path";p.textContent=job.outputPath;card.append(p)}
+    jobsList.append(card);
+  });
+}
+
+async function cancelJob(id){
+  try{
+    const r=await fetch("/api/jobs/"+encodeURIComponent(id),{method:"DELETE"});
+    if(!r.ok) throw new Error(await r.text());
+    notify("⏹ Задача отменена");
+    refreshJobs();
+  }catch(e){notify("❌ "+e.message,"error")}
+}
+
+async function openFolder(job){
+  try{
+    const r=await fetch("/api/open-folder",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({jobId:job.id,path:job.outputPath||""})
+    });
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok){showPathDialog(d.path||job.outputPath||"",d.error||("HTTP "+r.status));return}
+    notify("📂 Папка открыта","success");
+  }catch(e){showPathDialog(job.outputPath||"",e.message)}
 }
 
 function showPathDialog(path,error){
-const msg="Не удалось открыть папку."+(error?("\n"+error):"")+"\n\nПуть к файлу:\n"+path+"\n\nСкопировать путь в буфер обмена?";
-if(confirm(msg))copyPath(path);
+  const msg="Не удалось открыть папку."+(error?"\n"+error:"")+"\n\nПуть:\n"+path+"\n\nСкопировать путь?";
+  if(confirm(msg))copyPath(path);
 }
-
 async function copyPath(path){
-try{
-if(navigator.clipboard&&window.isSecureContext){
-await navigator.clipboard.writeText(path);
-}else{
-const ta=document.createElement("textarea");
-ta.value=path;ta.style.position="fixed";ta.style.opacity="0";
-document.body.appendChild(ta);ta.select();
-document.execCommand("copy");
-document.body.removeChild(ta);
-}
-notify("📋 Путь скопирован","success");
-}catch(e){
-prompt("Скопируйте путь вручную:",path);
-}
+  try{
+    if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(path)}
+    else{const ta=document.createElement("textarea");ta.value=path;ta.style.position="fixed";ta.style.opacity="0";document.body.append(ta);ta.select();document.execCommand("copy");ta.remove()}
+    notify("📋 Путь скопирован","success");
+  }catch(e){prompt("Скопируйте путь:",path)}
 }
 
-st.textContent="Выберите видео";
+startPolling();
+refreshJobs();
 </script>
 </body>
 </html>

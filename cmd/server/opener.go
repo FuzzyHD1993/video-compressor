@@ -40,9 +40,7 @@ func openFolderHandler(outputDir string) http.HandlerFunc {
 		}
 
 		if req.Path == "" && req.JobID != "" {
-			jobMutex.RLock()
-			job, ok := jobQueue[req.JobID]
-			jobMutex.RUnlock()
+			job, ok := getJob(req.JobID)
 			if !ok {
 				writeJSONError(w, http.StatusNotFound, "задача не найдена", "")
 				return
