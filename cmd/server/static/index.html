@@ -26,6 +26,7 @@ h1{text-align:center;font-size:30px;margin-bottom:5px}
 .btn-secondary{background:#1f6feb}
 .btn-secondary:hover:not(:disabled){background:#388bfd}
 .batch{margin-top:22px;padding-top:20px;border-top:1px solid #30363d}
+.batch-hint{color:#8b949e;font-size:12px;margin-bottom:10px}
 .batch-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
 input[type=text]{width:100%;padding:11px 12px;background:#0d1117;border:1px solid #30363d;border-radius:10px;color:#e6edf3;font-size:13px}
 input[type=text]:focus{outline:none;border-color:#58a6ff}
@@ -61,7 +62,7 @@ input[type=text]:focus{outline:none;border-color:#58a6ff}
 <body>
 <div class="container">
 <h1>🎬 Компрессор</h1>
-<div class="sub">Очередь · NVENC / QSV / AMF / CPU · пакетная обработка</div>
+<div class="sub">Выберите видео — программа сама подберёт ускорение</div>
 
 <div class="drop-zone" id="dropZone">
 <label for="fileInput">📁 Выберите видео (можно несколько)</label>
@@ -69,34 +70,35 @@ input[type=text]:focus{outline:none;border-color:#58a6ff}
 <div class="file-info" id="fileInfo">или перетащите файлы сюда</div>
 </div>
 
-<div class="section-label">🎯 Пресет</div>
+<div class="section-label">🎯 Качество</div>
 <div class="quality-grid" id="profileGrid">
-<button class="quality-btn" data-profile="fast">🚀 Быстро<span class="q-desc">p2 / veryfast</span></button>
-<button class="quality-btn active" data-profile="balance">⚖️ Баланс<span class="q-desc">p4 / medium</span></button>
-<button class="quality-btn" data-profile="quality">💎 Качество<span class="q-desc">p6 / slow</span></button>
+<button class="quality-btn" data-profile="fast">🚀 Быстро<span class="q-desc">меньше файл, быстрее</span></button>
+<button class="quality-btn active" data-profile="balance">⚖️ Баланс<span class="q-desc">рекомендуется</span></button>
+<button class="quality-btn" data-profile="quality">💎 Качество<span class="q-desc">лучше картинка</span></button>
 </div>
 
-<button class="btn" id="compressBtn">⚡ В очередь</button>
-<div class="status" id="status">Выберите файлы</div>
+<button class="btn" id="compressBtn">🚀 Сжать</button>
+<div class="status" id="status">Выберите видео</div>
 
 <div class="batch">
-<div class="section-label">📂 Пакетная обработка папки (на сервере)</div>
+<div class="section-label">📁 Сжать папку</div>
+<div class="batch-hint">Выберите папку с видео на компьютере</div>
 <div class="batch-grid">
-<input type="text" id="batchInput" placeholder="Папка: C:\Videos или /mnt/videos">
-<input type="text" id="batchOutput" placeholder="Куда (необязательно)">
+<input type="text" id="batchInput" placeholder="Папка с видео: C:\Videos">
+<input type="text" id="batchOutput" placeholder="Куда сохранить (необязательно)">
 </div>
-<button class="btn btn-secondary" id="batchBtn">📂 Сжать всё</button>
+<button class="btn btn-secondary" id="batchBtn">📁 Сжать папку</button>
 </div>
 
 <div class="jobs">
 <div class="jobs-head">
-<div class="section-label" style="margin:0">📋 Очередь</div>
+<div class="section-label" style="margin:0">📹 Видео</div>
 <div class="jobs-count" id="jobsCount"></div>
 </div>
-<div id="jobsList"><div class="empty">Задач пока нет</div></div>
+<div id="jobsList"><div class="empty">Пока нет видео</div></div>
 </div>
 
-<div class="footer">💡 Работает локально · CPU-задачи ограничены по потокам</div>
+<div class="footer">💡 Работает локально · на слабых ПК нагрузка ограничивается автоматически</div>
 </div>
 
 <script>
@@ -126,7 +128,7 @@ function setFiles(list){
   files=Array.from(list||[]);
   if(files.length){
     fileInfo.textContent="✅ "+files.map(f=>f.name).join(", ");
-    notify("Готово к запуску: "+files.length);
+    notify("Выбрано видео: "+files.length);
   }else{
     fileInfo.textContent="или перетащите файлы сюда";
   }
@@ -153,17 +155,17 @@ cb.onclick=async()=>{
     const r=await fetch("/api/jobs",{method:"POST",body:fd});
     if(!r.ok) throw new Error(await r.text());
     const d=await r.json();
-    notify("✅ В очереди: "+d.count,"success");
+    notify("✅ Принято видео: "+d.count,"success");
     setFiles([]);fi.value="";
     startPolling();refreshJobs();
   }catch(e){notify("❌ "+e.message,"error")}
-  finally{cb.disabled=false;cb.textContent="⚡ В очередь"}
+  finally{cb.disabled=false;cb.textContent="🚀 Сжать"}
 };
 
 batchBtn.onclick=async()=>{
   const input=batchInput.value.trim();
   if(!input){notify("❌ Укажите папку на сервере","error");return}
-  batchBtn.disabled=true;batchBtn.textContent="⏳ Сканирование...";
+  batchBtn.disabled=true;batchBtn.textContent="⏳ Ищу видео...";
   try{
     const r=await fetch("/api/batch",{
       method:"POST",headers:{"Content-Type":"application/json"},
@@ -171,10 +173,10 @@ batchBtn.onclick=async()=>{
     });
     if(!r.ok) throw new Error(await r.text());
     const d=await r.json();
-    notify("✅ В очереди: "+d.count,"success");
+    notify("✅ Найдено видео: "+d.count,"success");
     startPolling();refreshJobs();
   }catch(e){notify("❌ "+e.message,"error")}
-  finally{batchBtn.disabled=false;batchBtn.textContent="📂 Сжать всё"}
+  finally{batchBtn.disabled=false;batchBtn.textContent="📁 Сжать папку"}
 };
 
 function startPolling(){
@@ -184,8 +186,8 @@ function startPolling(){
 
 const STATUS={
   queued:{label:"В очереди",cls:"queued"},
-  running:{label:"Обработка",cls:"running"},
-  done:{label:"Готово",cls:"done"},
+  running:{label:"⚙️ Сжимается...",cls:"running"},
+  done:{label:"✅ Готово",cls:"done"},
   error:{label:"Ошибка",cls:"error"},
   canceled:{label:"Отменено",cls:"canceled"}
 };
@@ -200,10 +202,10 @@ async function refreshJobs(){
 }
 
 function renderJobs(list){
-  jobsCount.textContent=list.length?list.length+" задач":"";
+  jobsCount.textContent=list.length?list.length+" видео":"";
   jobsList.replaceChildren();
   if(!list.length){
-    const e=document.createElement("div");e.className="empty";e.textContent="Задач пока нет";jobsList.append(e);return;
+    const e=document.createElement("div");e.className="empty";e.textContent="Пока нет видео";jobsList.append(e);return;
   }
   list.forEach(job=>{
     const card=document.createElement("div");card.className="job";
@@ -211,7 +213,7 @@ function renderJobs(list){
     const left=document.createElement("div");
     const name=document.createElement("div");name.className="job-name";name.textContent=job.filename;
     const meta=document.createElement("div");meta.className="job-meta";
-    meta.textContent=profileLabel(job.profile)+" · "+fmtSize(job.inputSize)+(job.outputSize?" → "+fmtSize(job.outputSize):"");
+    meta.textContent="Качество: "+profileLabel(job.profile)+" · "+fmtSize(job.inputSize)+(job.outputSize?" → "+fmtSize(job.outputSize):"");
     left.append(name,meta);
     const s=STATUS[job.status]||{label:job.status,cls:""};
     const badge=document.createElement("span");badge.className="badge "+s.cls;badge.textContent=s.label;
@@ -244,7 +246,7 @@ async function cancelJob(id){
   try{
     const r=await fetch("/api/jobs/"+encodeURIComponent(id),{method:"DELETE"});
     if(!r.ok) throw new Error(await r.text());
-    notify("⏹ Задача отменена");
+    notify("⏹ Сжатие отменено");
     refreshJobs();
   }catch(e){notify("❌ "+e.message,"error")}
 }
