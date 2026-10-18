@@ -107,6 +107,17 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\install-video-compressor.ps1
 ```
 
+## 🔐 Подпись кода
+
+Windows-сборки подписываются через **SignPath Foundation**, когда в репозитории
+настроены секреты `SIGNPATH_API_TOKEN` и `SIGNPATH_ORGANIZATION_ID`. CI собирает
+`.exe`, отправляет его в SignPath и прикрепляет подписанный файл к релизу. Если
+секретов нет, релиз создаётся с неподписанным `.exe`.
+
+- Политика подписи и инструкция для мейнтейнера: [docs/CODE_SIGNING.md](docs/CODE_SIGNING.md)
+- Проверка в Windows: `Get-AuthenticodeSignature .\video-compressor.exe`
+- Workflow: [.github/workflows/release.yml](.github/workflows/release.yml)
+
 ## API
 
 - `POST /upload` — `multipart/form-data`: `video` (файл), `quality` (`high`/`medium`/`low`); возвращает `{"jobId": "..."}`

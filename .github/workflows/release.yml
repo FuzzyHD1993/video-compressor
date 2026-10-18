@@ -1,0 +1,201 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Gyan Doshi's release essentials build includes NVENC (h264/hevc).
+  # The rolling archive is updated only when FFmpeg makes a new release, and
+  # its published .sha256 file is verified before use.
+  FFMPEG_URL: https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip
+
+jobs:
+  build-windows:
+    name: Build Windows exe
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Download FFmpeg with NVENC
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/ffmpeg.zip "$FFMPEG_URL"
+          curl -fsSL -o /tmp/ffmpeg.zip.sha256 "$FFMPEG_URL.sha256"
+          echo "$(cat /tmp/ffmpeg.zip.sha256)  /tmp/ffmpeg.zip" | sha256sum -c -
+          unzip -j -o /tmp/ffmpeg.zip '*/bin/ffmpeg.exe' -d cmd/server
+          test -s cmd/server/ffmpeg.exe
+          grep -aq 'hevc_nvenc' cmd/server/ffmpeg.exe
+          grep -aq 'h264_nvenc' cmd/server/ffmpeg.exe
+
+      - name: Static checks
+        run: |
+          set -euo pipefail
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          go test ./...
+
+      - name: Build Windows exe
+        run: |
+          set -euo pipefail
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
+            go build -trimpath -ldflags="-s -w" -o video-compressor.exe ./cmd/server
+          ls -lh video-compressor.exe
+
+      # This artifact is both the SignPath input and the release fallback.
+      - name: Upload unsigned artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-unsigned
+          path: video-compressor.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  sign-windows:
+    name: Sign Windows exe (SignPath)
+    needs: build-windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      # Secrets cannot be referenced directly in a job-level `if`, so detect
+      # them in a step. Without credentials the job succeeds and the release
+      # falls back to the unsigned artifact.
+      - name: Detect SignPath credentials
+        id: credentials
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SIGNPATH_ORGANIZATION_ID: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+        run: |
+          if [ -n "$SIGNPATH_API_TOKEN" ] && [ -n "$SIGNPATH_ORGANIZATION_ID" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::SignPath secrets are not configured; the unsigned exe will be released."
+          fi
+
+      - name: Download unsigned artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: windows-unsigned
+          path: unsigned
+
+      # SignPath requires the artifact to be uploaded in the workflow run and
+      # addresses it by the artifact-id output of upload-artifact.
+      - name: Re-upload artifact for SignPath
+        if: steps.credentials.outputs.enabled == 'true'
+        id: upload-for-signing
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-to-sign
+          path: unsigned/video-compressor.exe
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Submit signing request
+        if: steps.credentials.outputs.enabled == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'video-compressor' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'release-signing' }}
+          github-artifact-id: ${{ steps.upload-for-signing.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+
+      # The signed archive may contain nested paths; normalize the filename so
+      # the release job always finds exactly one exe.
+      - name: Collect signed executable
+        if: steps.credentials.outputs.enabled == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p signed-final
+          find signed -type f -iname '*.exe' -print
+          exe="$(find signed -type f -iname '*.exe' | head -n 1)"
+          test -n "$exe"
+          cp "$exe" signed-final/video-compressor.exe
+          test -s signed-final/video-compressor.exe
+
+      - name: Upload signed artifact
+        if: steps.credentials.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-signed
+          path: signed-final/video-compressor.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish GitHub release
+    needs:
+      - build-windows
+      - sign-windows
+    # Publish even if signing failed/skipped; the unsigned build is the fallback.
+    if: >-
+      ${{
+        always() &&
+        needs.build-windows.result == 'success' &&
+        startsWith(github.ref, 'refs/tags/v')
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download signed artifact
+        id: download-signed
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: windows-signed
+          path: release-files
+
+      - name: Fallback to unsigned artifact
+        if: ${{ hashFiles('release-files/video-compressor.exe') == '' }}
+        uses: actions/download-artifact@v8
+        with:
+          name: windows-unsigned
+          path: release-files
+
+      - name: Verify and checksum
+        run: |
+          set -euo pipefail
+          test -s release-files/video-compressor.exe
+          file release-files/video-compressor.exe
+          sha256sum release-files/video-compressor.exe > release-files/SHA256SUMS
+          cat release-files/SHA256SUMS
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" \
+              release-files/video-compressor.exe \
+              release-files/SHA256SUMS \
+              --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              release-files/video-compressor.exe \
+              release-files/SHA256SUMS \
+              --title "Video Compressor $GITHUB_REF_NAME" \
+              --generate-notes \
+              --repo "$GITHUB_REPOSITORY"
+          fi
