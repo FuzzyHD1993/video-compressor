@@ -186,6 +186,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          PRE_RELEASE=()
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            PRE_RELEASE+=(--prerelease)
+          fi
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" \
               release-files/video-compressor.exe \
@@ -197,5 +201,6 @@ jobs:
               release-files/SHA256SUMS \
               --title "Video Compressor $GITHUB_REF_NAME" \
               --generate-notes \
-              --repo "$GITHUB_REPOSITORY"
+              --repo "$GITHUB_REPOSITORY" \
+              "${PRE_RELEASE[@]}"
           fi
