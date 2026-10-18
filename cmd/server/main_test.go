@@ -222,3 +222,22 @@ func TestHealthHandler(t *testing.T) {
 		}
 	}
 }
+
+func TestBindHelpers(t *testing.T) {
+	for _, host := range []string{"127.0.0.1", "::1", "localhost", "LOCALHOST"} {
+		if !isLoopback(host) {
+			t.Errorf("isLoopback(%q) = false, want true", host)
+		}
+	}
+	for _, host := range []string{"0.0.0.0", "192.168.0.5", ""} {
+		if isLoopback(host) {
+			t.Errorf("isLoopback(%q) = true, want false", host)
+		}
+	}
+	if got := browserHost("0.0.0.0"); got != "127.0.0.1" {
+		t.Errorf("browserHost(0.0.0.0) = %q", got)
+	}
+	if got := browserHost("192.168.0.5"); got != "192.168.0.5" {
+		t.Errorf("browserHost(LAN) = %q", got)
+	}
+}

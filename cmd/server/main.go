@@ -2,16 +2,18 @@ package main
 
 import (
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 )
 
-const appVersion = "2.0.1"
+const appVersion = "2.1.0"
 
 func main() {
 	prepareWorkingDir()
@@ -52,17 +54,49 @@ func main() {
 	http.HandleFunc("/api/open-folder", openFolderHandler(outputDir))
 
 	port := envOr("PORT", "8095")
-	url := "http://localhost:" + port
-	if os.Getenv("NO_BROWSER") == "" && os.Getenv("DISPLAY") != "" {
+	bindAddr := envOr("BIND_ADDR", "127.0.0.1")
+	authHash := strings.TrimSpace(os.Getenv("BASIC_AUTH_HASH"))
+	authUser := envOr("BASIC_AUTH_USER", "admin")
+
+	var handler http.Handler = http.DefaultServeMux
+	var err error
+	handler, err = basicAuthHandler(handler, authUser, authHash)
+	if err != nil {
+		log.Fatalf("❌ BASIC_AUTH_HASH: %v", err)
+	}
+	if !isLoopback(bindAddr) && authHash == "" {
+		log.Printf("⚠️ Сервер доступен по сети без пароля. Задайте BASIC_AUTH_HASH.")
+	}
+
+	host := browserHost(bindAddr)
+	url := "http://" + net.JoinHostPort(host, port)
+	if os.Getenv("NO_BROWSER") == "" &&
+		(runtime.GOOS == "windows" || runtime.GOOS == "darwin" || os.Getenv("DISPLAY") != "") {
 		go openBrowser(url)
 	}
 
+	log.Printf("🌐 Слушаю %s (auth: %v)", net.JoinHostPort(bindAddr, port), authHash != "")
 	log.Printf("🚀 Сервер: %s", url)
 	log.Println("Нажми Ctrl+C для выхода")
 
-	if err := http.ListenAndServe(":"+port, nil); err != nil {
+	if err := http.ListenAndServe(net.JoinHostPort(bindAddr, port), handler); err != nil {
 		log.Fatalf("❌ %v", err)
 	}
+}
+
+func isLoopback(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func browserHost(bindAddr string) string {
+	if isLoopback(bindAddr) || bindAddr == "0.0.0.0" || bindAddr == "::" {
+		return "127.0.0.1"
+	}
+	return bindAddr
 }
 
 func envOr(key, fallback string) string {

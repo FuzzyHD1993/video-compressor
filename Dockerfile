@@ -27,6 +27,7 @@ WORKDIR /app
 COPY --from=builder /app/video-compressor .
 
 ENV PORT=8080 \
+    BIND_ADDR=0.0.0.0 \
     NO_BROWSER=1 \
     MAX_WORKERS=2 \
     DOCKER=true

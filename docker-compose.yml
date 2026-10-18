@@ -9,6 +9,9 @@ services:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=video,compute,utility
       - PORT=8080
+      - BIND_ADDR=0.0.0.0
+      - BASIC_AUTH_USER=${BASIC_AUTH_USER:-admin}
+      - BASIC_AUTH_HASH=${BASIC_AUTH_HASH:-}
       - NO_BROWSER=1
       - MAX_WORKERS=2
       - DOCKER=true

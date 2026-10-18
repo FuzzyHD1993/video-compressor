@@ -13,6 +13,7 @@
 - 📂 **Пакетная обработка папки** (рекурсивно)
 - 🎚 **Три пресета:** Быстро / Баланс / Качество
 - 🖥 Автоматический CPU-fallback с ограничением потоков
+- 🔐 Basic Auth для доступа по сети (localhost — без пароля)
 - 🐳 Docker с GPU passthrough
 - 🪟 Windows: один `.exe` со встроенным FFmpeg и UI
 - 🔐 Подпись Windows-сборок через SignPath (при настроенных секретах)
@@ -95,10 +96,43 @@ go build -o video-compressor ./cmd/server
 | Переменная | По умолчанию | Описание |
 |---|---|---|
 | `PORT` | `8095` | HTTP-порт |
+| `BIND_ADDR` | `127.0.0.1` | Адрес прослушивания; `0.0.0.0` — доступ из сети |
+| `BASIC_AUTH_USER` | `admin` | Логин Basic Auth |
+| `BASIC_AUTH_HASH` | — | SHA-256 пароля; пусто — без пароля |
 | `FORCE_CPU` | — | `1` — только CPU (`libx265`) |
 | `ENCODER` | авто | Принудительный энкодер, например `hevc_qsv` |
 | `MAX_WORKERS` | `2` (GPU) / 1–2 (CPU) | Параллельных задач |
 | `NO_BROWSER` | — | `1` — не открывать браузер |
+
+### Доступ по сети и пароль
+
+По умолчанию сервис слушает **только localhost** и не требует пароля.
+Чтобы открыть его в локальной сети:
+
+```bash
+HASH='{SHA256}'$(printf '%s' 'мой-пароль' | sha256sum | cut -d' ' -f1)
+
+BIND_ADDR=0.0.0.0 \
+BASIC_AUTH_HASH="$HASH" \
+./video-compressor
+```
+
+Проверка:
+
+```bash
+# без пароля → 401
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8095/health
+
+# с паролем → 200
+curl -s -u admin:мой-пароль -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8095/health
+```
+
+Поддерживается SHA-256 в hex или base64, с префиксом `{SHA256}` или без него.
+Basic Auth передаёт пароль в base64 — используйте его только в доверенной сети,
+через VPN или reverse proxy с HTTPS.
+
+Docker по умолчанию слушает `0.0.0.0` внутри контейнера (иначе проброс порта
+не работает); задайте `BASIC_AUTH_HASH` в `.env`/окружении для защиты.
 
 ## 📂 Пакетная обработка
 
@@ -168,7 +202,7 @@ curl -X POST http://localhost:8095/api/batch \
 - `GET /status?jobId=...` — совместимость со старым API;
 - `GET /download?file=...` — скачать результат;
 - `POST /api/open-folder` — `{jobId}` или `{path}` (только внутри `output/`);
-- `GET /health` — `{"status":"ok","encoder":"hevc_nvenc","version":"2.0.1"}`;
+- `GET /health` — `{"status":"ok","encoder":"hevc_nvenc","version":"2.1.0"}`;
 - `GET /` — веб-интерфейс.
 
 ## 🪟 Windows: один `.exe`
@@ -248,12 +282,14 @@ Dockerfile, docker-compose.yml
 | Задача отменена, но FFmpeg жив | Обновите страницу; воркер завершит процесс по контексту. |
 | Batch не находит файлы | Путь указывается на сервере/в контейнере, не в браузере. |
 | Порт занят | Задайте `PORT`. |
+| `401 Unauthorized` | Задан `BASIC_AUTH_HASH`; передайте логин/пароль (`curl -u admin:...`). |
 | Docker не видит GPU | `nvidia-ctk cdi generate`, проверьте capabilities `gpu,video`. |
 | Windows SmartScreen | Неподписанная сборка; подпись появляется после настройки SignPath. |
 
 ## Ограничения
 
-- Нет аутентификации: не публикуйте сервис в интернет без reverse proxy.
+- Basic Auth защищает доступ, но без HTTPS пароль передаётся в base64;
+  используйте доверенную сеть, VPN или reverse proxy с TLS.
 - Batch принимает произвольные пути сервера — используйте только доверенный доступ.
 - Потребительские GPU имеют лимит NVENC-сессий (по умолчанию 2 задачи).
 - GTX 1660 SUPER не поддерживает AV1 NVENC.

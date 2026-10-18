@@ -17,6 +17,7 @@ video-compressor.exe
 /temp/
 /output/
 *.part
+.env
 
 # Build artifacts / release checksums
 SHA256SUMS
