@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>🎬 Компрессор</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0d1117;color:#e6edf3;font-family:sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
+.container{max-width:600px;width:100%;background:#161b22;border-radius:20px;padding:40px;box-shadow:0 20px 60px rgba(0,0,0,0.8);border:1px solid #30363d}
+h1{text-align:center;font-size:32px;margin-bottom:5px}
+.sub{text-align:center;color:#8b949e;font-size:14px;margin-bottom:30px}
+.drop-zone{border:3px dashed #30363d;border-radius:16px;padding:50px 20px;text-align:center;cursor:pointer;transition:.3s;background:#0d1117;margin-bottom:25px}
+.drop-zone:hover{border-color:#58a6ff}
+.drop-zone input{display:none}
+.drop-zone label{cursor:pointer;color:#58a6ff;font-size:18px;font-weight:600}
+.file-info{margin-top:12px;font-size:14px;color:#8b949e}
+.file-selected{color:#58a6ff;font-weight:600}
+.quality-section{margin:25px 0}
+.section-label{font-size:16px;font-weight:600;margin-bottom:12px;color:#e6edf3}
+.quality-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.quality-btn{padding:16px 10px;background:#0d1117;border:2px solid #30363d;border-radius:12px;color:#e6edf3;cursor:pointer;text-align:center;font-size:15px;font-weight:600;transition:.2s}
+.quality-btn:hover{border-color:#58a6ff;background:#1c2333}
+.quality-btn.active{border-color:#58a6ff;background:#1c2333}
+.quality-btn .q-desc{display:block;font-size:12px;font-weight:400;color:#8b949e;margin-top:4px}
+.btn-compress{width:100%;padding:18px;background:#238636;color:#fff;border:none;border-radius:14px;font-size:20px;font-weight:700;cursor:pointer;transition:.2s;margin:15px 0;letter-spacing:1px}
+.btn-compress:hover:not(:disabled){background:#2ea043;transform:scale(1.02)}
+.btn-compress:disabled{opacity:.5;cursor:not-allowed}
+.status{margin-top:18px;text-align:center;font-size:16px;min-height:40px;padding:10px}
+.status-error{color:#f85149}
+.status-success{color:#3fb950}
+.status-wait{color:#d29922}
+.progress{width:100%;height:8px;background:#21262d;border-radius:4px;margin-top:10px;display:none;overflow:hidden}
+.progress-bar{height:100%;width:0%;background:linear-gradient(90deg,#58a6ff,#1f6feb);border-radius:4px;transition:width .5s}
+.download-link{display:inline-block;margin-top:8px;padding:12px 30px;background:#238636;color:#fff;text-decoration:none;border-radius:10px;font-weight:600;transition:.2s}
+.download-link:hover{background:#2ea043}
+.footer{margin-top:20px;text-align:center;font-size:12px;color:#484f58}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>🎬 Компрессор</h1>
+<div class="sub">Перетащи видео и нажми кнопку</div>
+<div class="drop-zone" id="dropZone">
+<label for="fileInput">📁 Выберите видео</label>
+<input type="file" id="fileInput" accept="video/*">
+<div class="file-info" id="fileInfo">или перетащите сюда</div>
+</div>
+<div class="quality-section">
+<div class="section-label">🎯 Качество</div>
+<div class="quality-grid" id="qualityGrid">
+<button class="quality-btn" data-quality="high">🌟 Отличное<span class="q-desc">1080p</span></button>
+<button class="quality-btn active" data-quality="medium">⚖️ Хорошее<span class="q-desc">720p</span></button>
+<button class="quality-btn" data-quality="low">📦 Эконом<span class="q-desc">480p</span></button>
+</div>
+</div>
+<button class="btn-compress" id="compressBtn">⚡ Сжать!</button>
+<div class="status" id="status">Выберите видео</div>
+<div class="progress" id="progress"><div class="progress-bar" id="progressBar"></div></div>
+<div class="footer">💡 Работает локально · GPU NVENC при наличии</div>
+</div>
+<script>
+const dz=document.getElementById("dropZone");
+const fi=document.getElementById("fileInput");
+const cb=document.getElementById("compressBtn");
+const st=document.getElementById("status");
+const pg=document.getElementById("progress");
+const pb=document.getElementById("progressBar");
+const qb=document.querySelectorAll(".quality-btn");
+let file=null;
+let quality="medium";
+let jobId=null;
+let interval=null;
+
+dz.addEventListener("dragover",e=>{e.preventDefault();dz.style.borderColor="#58a6ff"});
+dz.addEventListener("dragleave",()=>{dz.style.borderColor="#30363d"});
+dz.addEventListener("drop",e=>{e.preventDefault();dz.style.borderColor="#30363d";if(e.dataTransfer.files.length){file=e.dataTransfer.files[0];document.getElementById("fileInfo").innerHTML="✅ "+file.name;st.textContent="Готов";st.style.color="#d29922"}});
+fi.addEventListener("change",()=>{if(fi.files.length){file=fi.files[0];document.getElementById("fileInfo").innerHTML="✅ "+file.name;st.textContent="Готов";st.style.color="#d29922"}});
+qb.forEach(b=>{b.onclick=function(){qb.forEach(x=>x.classList.remove("active"));this.classList.add("active");quality=this.dataset.quality}});
+
+cb.onclick=async function(){
+if(!file){st.textContent="❌ Выберите видео";st.style.color="#f85149";return}
+const fd=new FormData();fd.append("video",file);fd.append("quality",quality);
+this.disabled=true;this.textContent="⏳ Сжатие...";st.textContent="⏳ Обработка...";st.style.color="#d29922";pb.style.width="0%";
+try{
+const r=await fetch("/upload",{method:"POST",body:fd});
+if(!r.ok)throw new Error(await r.text());
+const d=await r.json();jobId=d.jobId;
+if(interval)clearInterval(interval);interval=setInterval(checkStatus,500);
+}catch(e){st.textContent="❌ "+e.message;st.style.color="#f85149";this.disabled=false;this.textContent="⚡ Сжать!"}
+}
+
+async function checkStatus(){
+if(!jobId)return;
+try{
+const r=await fetch("/status?jobId="+jobId);
+if(!r.ok){clearInterval(interval);return}
+const job=await r.json();
+pb.style.width=job.progress+"%";
+if(job.status==="done"){
+clearInterval(interval);
+const size=(job.outputSize/1024/1024).toFixed(1);
+st.innerHTML="✅ Готово! Размер: "+size+" MB <a href=\"/download?file="+job.outputName+"\" class=\"download-link\">⬇️ Скачать</a>";
+st.style.color="#3fb950";
+cb.disabled=false;cb.textContent="⚡ Сжать!";
+file=null;fi.value="";document.getElementById("fileInfo").textContent="или перетащите сюда";
+setTimeout(()=>{pg.style.display="none";pb.style.width="0%"},3000);
+}else if(job.status==="error"){
+clearInterval(interval);
+st.textContent="❌ "+job.error;st.style.color="#f85149";
+cb.disabled=false;cb.textContent="⚡ Сжать!";
+}
+}catch(e){console.log(e)}
+}
+
+st.textContent="Выберите видео";
+</script>
+</body>
+</html>

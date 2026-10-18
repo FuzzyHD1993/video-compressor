@@ -1,0 +1,22 @@
+# Build artifacts
+/compressor
+/compressor.exe
+/video-compressor
+/video-compressor.exe
+/server
+
+# Large bundled binaries / archives
+/ffmpeg/
+/ffmpeg.exe
+/ffmpeg.zip
+/ffmpeg-9.0.1-essentials_build/
+
+# Runtime data
+/temp/
+/output/
+*.part
+
+# Editor / OS noise
+.DS_Store
+.vscode/
+.idea/
