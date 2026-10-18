@@ -1,8 +1,24 @@
 # 🎬 Video Compressor
 
+[![Release](https://img.shields.io/github/v/release/FuzzyHD1993/video-compressor?sort=semver)](https://github.com/FuzzyHD1993/video-compressor/releases)
+[![Release workflow](https://github.com/FuzzyHD1993/video-compressor/actions/workflows/release.yml/badge.svg)](https://github.com/FuzzyHD1993/video-compressor/actions/workflows/release.yml)
+
 Локальный веб-сервис для сжатия видео через FFmpeg. По умолчанию использует
 GPU (NVIDIA NVENC), при отсутствии аппаратного энкодера автоматически
 переключается на CPU (`libx265`).
+
+## Содержание
+
+- [Возможности](#возможности)
+- [Как это работает](#как-это-работает)
+- [Быстрый старт (Linux, GPU)](#быстрый-старт-linux-gpu)
+- [Запуск без Docker](#запуск-без-docker)
+- [Windows: один `.exe`](#-windows-один-exe-без-установки)
+- [API](#api)
+- [CI и релизы](#ci-и-релизы)
+- [Разработка](#разработка)
+- [Диагностика](#диагностика)
+
 
 ## Возможности
 
@@ -13,6 +29,31 @@ GPU (NVIDIA NVENC), при отсутствии аппаратного энко�
 - 🐳 Docker-образ с FFmpeg и GPU passthrough
 - 🪟 **Windows: один `.exe`** — FFmpeg и веб-интерфейс встроены, ничего ставить не нужно
 - 🧰 Установка на Windows через WSL2 (Docker Desktop или Podman)
+- 🔐 Подпись Windows-сборок через SignPath Foundation (при настроенных секретах)
+- 📦 Автоматические GitHub Releases по тегам
+
+## Как это работает
+
+1. Браузер отправляет видео на `POST /upload` вместе с профилем качества.
+2. Сервер сохраняет файл в `temp/` и ставит задачу в очередь.
+3. FFmpeg выбранным энкодером (`hevc_nvenc`, `h264_nvenc`, AMF или `libx265`)
+   перекодирует видео с масштабированием и сохранением пропорций.
+4. Прогресс передаётся в браузер через `GET /status?jobId=...`.
+5. Готовый файл появляется в `output/`; исходник из `temp/` удаляется.
+
+Одновременно выполняется до двух GPU-задач (ограничение NVENC-сессий) или
+`runtime.NumCPU()` CPU-задач. Количество можно переопределить через
+`MAX_WORKERS`.
+
+### Профили качества
+
+| Профиль | Разрешение | CRF/CQ | Аудио | NVENC preset | CPU preset |
+|---|---|---|---|---|---|
+| `high` | 1920×1080 | 20 | AAC 192k | `p6` | `slow` |
+| `medium` | 1280×720 | 23 | AAC 128k | `p4` | `medium` |
+| `low` | 854×480 | 28 | AAC 96k | `p2` | `fast` |
+
+NVENC использует `-rc vbr -cq <CRF> -b:v 0`, CPU — `-crf <CRF>`.
 
 ## Быстрый старт (Linux, GPU)
 
@@ -32,6 +73,32 @@ docker compose up -d --build
 docker run --rm --gpus all video-compressor:latest \
   ffmpeg -hide_banner -encoders | grep nvenc
 ```
+
+### Docker и GPU
+
+`docker-compose.yml` содержит оба способа проброса GPU:
+
+- `deploy.resources` — Docker + NVIDIA Container Toolkit;
+- `devices: nvidia.com/gpu=all` — Podman/CDI.
+
+Для Podman CDI-спецификация генерируется один раз:
+
+```bash
+sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+nvidia-ctk cdi list
+```
+
+Полезные команды:
+
+```bash
+docker compose logs -f          # логи приложения
+docker compose down             # остановить
+docker compose up -d --build    # пересобрать и запустить
+curl http://localhost:8095/health
+```
+
+`temp/` и `output/` смонтированы из репозитория, поэтому результаты видны на
+хосте. Внутри контейнера приложение слушает `8080`, наружу опубликован `8095`.
 
 ## Запуск без Docker
 
@@ -120,10 +187,72 @@ Windows-сборки подписываются через **SignPath Foundation
 
 ## API
 
-- `POST /upload` — `multipart/form-data`: `video` (файл), `quality` (`high`/`medium`/`low`); возвращает `{"jobId": "..."}`
-- `GET /status?jobId=...` — состояние задачи
-- `GET /health` — статус, выбранный энкодер и версия
-- `GET /` — веб-интерфейс
+### `POST /upload`
+
+Принимает `multipart/form-data`:
+
+- `video` — файл видео;
+- `quality` — `high`, `medium` или `low` (по умолчанию `medium`).
+
+```bash
+curl -F "video=@movie.mkv" -F "quality=medium" \
+  http://localhost:8095/upload
+# {"jobId":"job_1792340242306434000"}
+```
+
+### `GET /status?jobId=...`
+
+```bash
+curl "http://localhost:8095/status?jobId=job_1792340242306434000"
+```
+
+```json
+{
+  "id": "job_1792340242306434000",
+  "filename": "movie.mkv",
+  "status": "done",
+  "progress": 100,
+  "outputName": "movie_medium.mp4",
+  "inputSize": 19578245,
+  "outputSize": 5249983
+}
+```
+
+`status`: `pending` → `processing` → `done` или `error`. При ошибке поле
+`error` содержит последние строки лога FFmpeg.
+
+### `GET /health`
+
+```json
+{"status":"ok","encoder":"hevc_nvenc","version":"1.1.0"}
+```
+
+### `GET /`
+
+Веб-интерфейс (встроен в бинарник).
+
+## CI и релизы
+
+Workflow [`.github/workflows/release.yml`](.github/workflows/release.yml)
+запускается по тегам `v*` и вручную:
+
+1. `build-windows` — скачивает FFmpeg с gyan.dev, проверяет SHA-256, запускает
+   `gofmt`/`go vet`/`go test` и собирает `video-compressor.exe`;
+2. `sign-windows` — отправляет артефакт в SignPath (если заданы секреты) и
+   загружает подписанный файл;
+3. `release` — прикрепляет подписанный `.exe` (или unsigned-fallback) и
+   `SHA256SUMS` к GitHub Release.
+
+Теги с дефисом (`v1.2.0-test`, `v2.0.0-rc1`) публикуются как prerelease.
+Подробности и настройка секретов — в [docs/CODE_SIGNING.md](docs/CODE_SIGNING.md).
+
+Локальная сборка релизного `.exe`:
+
+```bash
+cp /path/to/ffmpeg.exe cmd/server/ffmpeg.exe   # не хранится в git
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
+  go build -trimpath -ldflags="-s -w" -o video-compressor.exe ./cmd/server
+```
 
 ## Разработка
 
@@ -134,6 +263,75 @@ go build ./...
 go test ./...
 ```
 
+Запуск локально:
+
+```bash
+NO_BROWSER=1 PORT=8095 go run ./cmd/server
+```
+
+Кросс-компиляция под Windows:
+
+```bash
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
+  go build -trimpath -ldflags="-s -w" -o video-compressor.exe ./cmd/server
+```
+
+### Структура проекта
+
+```text
+cmd/server/
+  main.go              HTTP-сервер, очередь задач, вызов FFmpeg
+  embed_windows.go     встраивание ffmpeg.exe (Windows, build tag)
+  embed_other.go       no-op для Linux/Docker
+  static.go            встроенный index.html
+  static/index.html    веб-интерфейс
+  main_test.go         тесты аргументов, энкодера, API
+docs/
+  WINDOWS.md           WSL2, Docker Desktop, Podman CDI
+  CODE_SIGNING.md      политика подписи SignPath
+scripts/
+  install-video-compressor.ps1
+.github/workflows/
+  release.yml          сборка, подпись, GitHub Release
+Dockerfile
+docker-compose.yml
+```
+
+### Проверено
+
+| Среда | Результат |
+|---|---|
+| Linux + GTX 1660 SUPER (FFmpeg 9.x) | ✅ `hevc_nvenc`, 1080p → 720p/480p |
+| Docker + NVIDIA Container Toolkit / CDI | ✅ GPU внутри контейнера, upload → HEVC |
+| Windows `.exe` под Wine | ✅ распаковка FFmpeg, UI, `/health`, CPU-fallback |
+| Реальный Windows + NVIDIA GPU | ⏳ требуется физический хост |
+
+## Диагностика
+
+| Проблема | Решение |
+|---|---|
+| `FFmpeg не найден` | Установите FFmpeg в `PATH` или положите `ffmpeg.exe` рядом с бинарником; Windows-`.exe` содержит его внутри. |
+| Используется `libx265` вместо GPU | Проверьте драйвер NVIDIA, `/dev/nvidia*` в контейнере или `nvidia-smi`; посмотрите `/health`. |
+| `nvenc` есть в списке, но задачи падают | Драйвер/библиотеки не проброшены в контейнер; проверьте `NVIDIA_DRIVER_CAPABILITIES=video,compute,utility`. |
+| Порт 8095 занят | Задайте другой `PORT` (и обновите проброс порта в compose). |
+| Контейнер не видит GPU | `nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml`, перезапустите Docker/Podman. |
+| Подпись пропущена в CI | Не заданы `SIGNPATH_API_TOKEN`/`SIGNPATH_ORGANIZATION_ID`; см. [docs/CODE_SIGNING.md](docs/CODE_SIGNING.md). |
+| SmartScreen предупреждает | Нажмите «Подробнее → Выполнить всё равно»; репутация накапливается со временем. |
+| WSL2: нет `/dev/dxg` | Обновите Windows-драйвер NVIDIA и выполните `wsl --update`; Linux-драйвер внутри WSL не нужен. |
+
+Логи:
+
+```bash
+# Linux без Docker
+./video-compressor
+
+# Docker
+docker compose logs -f
+
+# Windows
+# окно консоли, из которого запущен video-compressor.exe
+```
+
 ## Ограничения
 
 - GTX 1660 SUPER (Turing) поддерживает H.264/HEVC NVENC, но **не AV1**.
@@ -141,3 +339,9 @@ go test ./...
   умолчанию запускается не более двух задач.
 - Linux-драйвер NVIDIA внутри WSL2 устанавливать не нужно — используется
   драйвер Windows, проброшенный через `/dev/dxg`.
+- Сервис не имеет аутентификации и предназначен для локальной сети. Не
+  публикуйте его в интернет без reverse proxy и авторизации.
+- Файлы с одинаковым именем и профилем качества перезаписываются в `output/`.
+- `.exe` не подписан, пока в репозитории не настроены секреты SignPath.
+- FFmpeg распаковывается в `%TEMP%` и не удаляется автоматически; при нехватке
+  места удалите `video-compressor-ffmpeg-*.exe` вручную.
