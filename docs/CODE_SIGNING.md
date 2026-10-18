@@ -52,6 +52,22 @@ These steps require access to the GitHub repository and the SignPath dashboard.
    | `SIGNPATH_API_TOKEN` | API token from SignPath |
    | `SIGNPATH_ORGANIZATION_ID` | SignPath organization ID |
 
+   Either use the GitHub UI or the helper script:
+
+   ```bash
+   # file format: KEY=value, one per line
+   ./scripts/setup-signpath-secrets.sh /path/to/signpath.env
+   ```
+
+   The script sends the values through the GitHub API, never prints them, and
+   lists the configured secret names afterwards. You can also pass them via
+   environment variables:
+
+   ```bash
+   SIGNPATH_API_TOKEN=... SIGNPATH_ORGANIZATION_ID=... \
+     ./scripts/setup-signpath-secrets.sh
+   ```
+
 4. Optional repository variables (override the defaults baked into the
    workflow):
 

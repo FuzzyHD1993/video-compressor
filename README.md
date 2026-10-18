@@ -206,6 +206,12 @@ Windows-сборки подписываются через **SignPath Foundation
 `.exe`, отправляет его в SignPath и прикрепляет подписанный файл к релизу. Если
 секретов нет, релиз создаётся с неподписанным `.exe`.
 
+Когда токен получен, секреты устанавливаются одной командой:
+
+```bash
+./scripts/setup-signpath-secrets.sh /path/to/signpath.env
+```
+
 - Политика подписи и инструкция для мейнтейнера: [docs/CODE_SIGNING.md](docs/CODE_SIGNING.md)
 - Проверка в Windows: `Get-AuthenticodeSignature .\video-compressor.exe`
 - Workflow: [.github/workflows/release.yml](.github/workflows/release.yml)
