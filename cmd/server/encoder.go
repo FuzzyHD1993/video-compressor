@@ -40,10 +40,15 @@ var encoderCandidates = []string{
 	"libx265", "libx264",
 }
 
+var (
+	encoderAvailabilityFn = availableEncoders
+	encoderWorksFn        = encoderWorks
+)
+
 // detectBestEncoder probes encoders in priority order: NVENC -> QSV -> AMF ->
 // CPU. ENCODER forces a specific encoder, FORCE_CPU=1 skips hardware.
 func detectBestEncoder(ffmpegPath string) EncoderChoice {
-	available := availableEncoders(ffmpegPath)
+	available := encoderAvailabilityFn(ffmpegPath)
 
 	if forceCPU() {
 		for _, name := range []string{"libx265", "libx264"} {
@@ -100,17 +105,17 @@ func availableEncoders(ffmpegPath string) map[string]bool {
 func probeChoice(ffmpegPath, name string) (EncoderChoice, bool) {
 	family := encoderFamily(name)
 	if family == "qsv" {
-		if encoderWorks(ffmpegPath, name, nil) {
+		if encoderWorksFn(ffmpegPath, name, nil) {
 			return EncoderChoice{Name: name, Family: family}, true
 		}
 		// Some QSV builds need an explicit device.
 		initArgs := []string{"-init_hw_device", "qsv=hw", "-filter_hw_device", "hw"}
-		if encoderWorks(ffmpegPath, name, initArgs) {
+		if encoderWorksFn(ffmpegPath, name, initArgs) {
 			return EncoderChoice{Name: name, Family: family, InitArgs: initArgs}, true
 		}
 		return EncoderChoice{}, false
 	}
-	if encoderWorks(ffmpegPath, name, nil) {
+	if encoderWorksFn(ffmpegPath, name, nil) {
 		return EncoderChoice{Name: name, Family: family}, true
 	}
 	return EncoderChoice{}, false

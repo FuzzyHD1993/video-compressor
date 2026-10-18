@@ -5,8 +5,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func resetJobStore(t *testing.T) {
@@ -131,5 +134,93 @@ func TestBatchHandlerValidation(t *testing.T) {
 	batchHandler(rec, req)
 	if rec.Code != 400 {
 		t.Errorf("missing input_dir = %d, want 400", rec.Code)
+	}
+}
+
+func TestOutputCollisionConcurrent(t *testing.T) {
+	dir := t.TempDir()
+	const n = 20
+	paths := make(chan string, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			paths <- uniqueOutputPath(dir, "video.mp4")
+		}()
+	}
+	wg.Wait()
+	close(paths)
+
+	seen := make(map[string]bool)
+	for path := range paths {
+		if seen[path] {
+			t.Errorf("duplicate output path: %s", path)
+		}
+		seen[path] = true
+	}
+	if len(seen) != n {
+		t.Errorf("unique paths = %d, want %d", len(seen), n)
+	}
+}
+
+func TestRunningJobCancel(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-script fake ffmpeg is POSIX-only")
+	}
+	resetJobStore(t)
+
+	dir := t.TempDir()
+	fakeFFmpeg := filepath.Join(dir, "fake-ffmpeg.sh")
+	if err := os.WriteFile(fakeFFmpeg, []byte("#!/bin/sh\nexec sleep 30\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	input := filepath.Join(dir, "input.mp4")
+	if err := os.WriteFile(input, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	oldFFmpeg, oldEncoder := activeFFmpeg, activeEncoder
+	activeFFmpeg = fakeFFmpeg
+	activeEncoder = EncoderChoice{Name: "libx265", Family: "x265"}
+	t.Cleanup(func() {
+		activeFFmpeg, activeEncoder = oldFFmpeg, oldEncoder
+	})
+
+	job := newJob("video.mp4", input, filepath.Join(dir, "out.mp4"), "fast", true, 1)
+	t.Cleanup(func() { cancelJob(job.ID) })
+
+	done := make(chan struct{})
+	go func() {
+		runJob(job)
+		close(done)
+	}()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		got, _ := getJob(job.ID)
+		if got.Status == "running" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("job did not start, status=%q", got.Status)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	status, ok := cancelJob(job.ID)
+	if !ok || status != "canceled" {
+		t.Fatalf("cancelJob = %q, %v", status, ok)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("runJob did not stop after cancellation")
+	}
+
+	got, _ := getJob(job.ID)
+	if got.Status != "canceled" {
+		t.Errorf("final status = %q, want canceled", got.Status)
 	}
 }

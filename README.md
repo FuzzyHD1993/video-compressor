@@ -168,7 +168,7 @@ curl -X POST http://localhost:8095/api/batch \
 - `GET /status?jobId=...` — совместимость со старым API;
 - `GET /download?file=...` — скачать результат;
 - `POST /api/open-folder` — `{jobId}` или `{path}` (только внутри `output/`);
-- `GET /health` — `{"status":"ok","encoder":"hevc_nvenc","version":"2.0.0"}`;
+- `GET /health` — `{"status":"ok","encoder":"hevc_nvenc","version":"2.0.1"}`;
 - `GET /` — веб-интерфейс.
 
 ## 🪟 Windows: один `.exe`

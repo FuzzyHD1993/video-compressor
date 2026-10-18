@@ -367,11 +367,11 @@ func uniqueOutputPath(dir, name string) string {
 	base := strings.TrimSuffix(name, ext)
 	candidate := filepath.Join(dir, name)
 	for i := 1; ; i++ {
-		_, reserved := reservedOutputs.Load(candidate)
 		_, statErr := os.Stat(candidate)
-		if !reserved && os.IsNotExist(statErr) {
-			reservedOutputs.Store(candidate, true)
-			return candidate
+		if os.IsNotExist(statErr) {
+			if _, loaded := reservedOutputs.LoadOrStore(candidate, true); !loaded {
+				return candidate
+			}
 		}
 		candidate = filepath.Join(dir, fmt.Sprintf("%s_%d%s", base, i+1, ext))
 	}
