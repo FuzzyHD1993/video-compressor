@@ -338,7 +338,10 @@ func scanVideoFiles(inputDir, outputDir string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	absOut, _ := filepath.Abs(outputDir)
+	var absOut string
+	if outputDir != "" {
+		absOut, _ = filepath.Abs(outputDir)
+	}
 
 	var files []string
 	err = filepath.WalkDir(absIn, func(path string, d os.DirEntry, err error) error {
@@ -352,6 +355,9 @@ func scanVideoFiles(inputDir, outputDir string) ([]string, error) {
 			return nil
 		}
 		if isVideoExtension(strings.ToLower(filepath.Ext(path))) {
+			if _, reserved := reservedOutputs.Load(path); reserved {
+				return nil
+			}
 			files = append(files, path)
 			if len(files) > 1000 {
 				return fmt.Errorf("слишком много видеофайлов (лимит 1000)")
@@ -378,6 +384,9 @@ func uniqueOutputPath(dir, name string) string {
 }
 
 func batchOutputPath(inputRoot, file, outputDir, profile string) string {
+	if outputDir == "" {
+		outputDir = filepath.Dir(file)
+	}
 	rel, err := filepath.Rel(inputRoot, file)
 	if err != nil {
 		rel = filepath.Base(file)

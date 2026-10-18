@@ -85,8 +85,9 @@ input[type=text]:focus{outline:none;border-color:#58a6ff}
 <div class="batch-hint">Выберите папку с видео на компьютере</div>
 <div class="batch-grid">
 <input type="text" id="batchInput" placeholder="Папка с видео: C:\Videos">
-<input type="text" id="batchOutput" placeholder="Куда сохранить (необязательно)">
+<input type="text" id="batchOutput" placeholder="Пусто — рядом с исходными видео">
 </div>
+<div class="batch-hint" style="margin-top:8px">Если не указывать папку, результат сохранится рядом с каждым исходным видео.</div>
 <button class="btn btn-secondary" id="batchBtn">📁 Сжать папку</button>
 </div>
 
@@ -232,7 +233,7 @@ function renderJobs(list){
       b.onclick=()=>cancelJob(job.id);actions.append(b);
     }
     if(job.status==="done"&&job.outputName){
-      const dl=document.createElement("a");dl.href="/download?file="+encodeURIComponent(job.outputName);dl.textContent="⬇️ Скачать";actions.append(dl);
+      const dl=document.createElement("a");dl.href="/download?jobId="+encodeURIComponent(job.id);dl.textContent="⬇️ Скачать";actions.append(dl);
       const op=document.createElement("button");op.className="open";op.textContent="📂 Открыть папку";
       op.onclick=()=>openFolder(job);actions.append(op);
     }

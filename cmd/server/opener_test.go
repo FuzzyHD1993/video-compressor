@@ -89,7 +89,12 @@ func TestOpenFolderHandlerValidation(t *testing.T) {
 }
 
 func TestOpenFolderHandlerDocker(t *testing.T) {
-	t.Setenv("DOCKER", "true")
+	old := isDockerFunction
+	isDockerFunction = func() bool { return true }
+	t.Cleanup(func() { isDockerFunction = old })
+	t.Setenv("DISPLAY", "")
+	t.Setenv("WAYLAND_DISPLAY", "")
+
 	outputDir := t.TempDir()
 	file := filepath.Join(outputDir, "video.mp4")
 	if err := os.WriteFile(file, []byte("data"), 0o644); err != nil {
@@ -120,7 +125,6 @@ func TestOpenFolderHandlerHeadless(t *testing.T) {
 	if isDockerEnvironment() {
 		t.Skip("running inside a container; Docker branch is covered separately")
 	}
-	t.Setenv("DOCKER", "")
 	t.Setenv("DISPLAY", "")
 	t.Setenv("WAYLAND_DISPLAY", "")
 
@@ -144,6 +148,44 @@ func TestOpenFolderHandlerHeadless(t *testing.T) {
 	}
 	if resp["path"] != file {
 		t.Errorf("fallback path = %q, want %q", resp["path"], file)
+	}
+}
+
+func TestOpenFolderJobOutsideOutput(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("headless/open behavior is Linux-specific")
+	}
+	old := isDockerFunction
+	isDockerFunction = func() bool { return false }
+	t.Cleanup(func() { isDockerFunction = old })
+	t.Setenv("DISPLAY", "")
+	t.Setenv("WAYLAND_DISPLAY", "")
+	resetJobStore(t)
+
+	sourceDir := t.TempDir()
+	out := filepath.Join(sourceDir, "movie_fast.mp4")
+	if err := os.WriteFile(out, []byte("data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	job := newJob("movie.mp4", filepath.Join(sourceDir, "movie.mp4"), out, "fast", true, 1)
+	jobsMu.Lock()
+	job.Status = "done"
+	job.OutputPath = out
+	jobsMu.Unlock()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/open-folder", strings.NewReader(`{"jobId":"`+job.ID+`"}`))
+	openFolderHandler(t.TempDir())(rec, req)
+	// Headless environment: must fail with the path for fallback, not 403.
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500; body=%s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp["path"] != out {
+		t.Errorf("fallback path = %q, want %q", resp["path"], out)
 	}
 }
 
@@ -179,5 +221,29 @@ func TestDownloadHandler(t *testing.T) {
 		if rec.Code == http.StatusOK {
 			t.Errorf("file=%q unexpectedly returned 200", target)
 		}
+	}
+}
+
+func TestDownloadByJobIDOutsideOutput(t *testing.T) {
+	resetJobStore(t)
+	sourceDir := t.TempDir()
+	out := filepath.Join(sourceDir, "movie_fast.mp4")
+	content := []byte("batch-output")
+	if err := os.WriteFile(out, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	job := newJob("movie.mp4", filepath.Join(sourceDir, "movie.mp4"), out, "fast", true, 1)
+	jobsMu.Lock()
+	job.Status = "done"
+	job.OutputPath = out
+	jobsMu.Unlock()
+
+	rec := httptest.NewRecorder()
+	downloadHandler(t.TempDir())(rec, httptest.NewRequest("GET", "/download?jobId="+job.ID, nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("job download = %d, want 200", rec.Code)
+	}
+	if rec.Body.String() != string(content) {
+		t.Errorf("body = %q", rec.Body.String())
 	}
 }

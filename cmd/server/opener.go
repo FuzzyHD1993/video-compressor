@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -49,7 +50,10 @@ func openFolderHandler(outputDir string) http.HandlerFunc {
 				writeJSONError(w, http.StatusConflict, "файл ещё не готов", "")
 				return
 			}
-			req.Path = filepath.Join(outputDir, job.OutputName)
+			req.Path = job.OutputPath
+			if req.Path == "" {
+				req.Path = filepath.Join(outputDir, job.OutputName)
+			}
 		}
 
 		if req.Path == "" {
@@ -57,19 +61,31 @@ func openFolderHandler(outputDir string) http.HandlerFunc {
 			return
 		}
 
-		target, err := resolveOutputFile(outputDir, req.Path)
-		if err != nil {
-			if errors.Is(err, errOutsideOutput) {
-				writeJSONError(w, http.StatusForbidden, err.Error(), "")
+		var target string
+		var err error
+		if req.JobID != "" {
+			// The job path is server-controlled and may live next to the source
+			// file (batch mode), so do not restrict it to output/.
+			target, err = existingFile(req.Path)
+			if err != nil {
+				writeJSONError(w, http.StatusNotFound, "файл не найден", "")
 				return
 			}
-			writeJSONError(w, http.StatusNotFound, "файл не найден", "")
-			return
+		} else {
+			target, err = resolveOutputFile(outputDir, req.Path)
+			if err != nil {
+				if errors.Is(err, errOutsideOutput) {
+					writeJSONError(w, http.StatusForbidden, err.Error(), "")
+					return
+				}
+				writeJSONError(w, http.StatusNotFound, "файл не найден", "")
+				return
+			}
 		}
 
-		if isDockerEnvironment() {
+		if isDockerFunction() && !hasGraphicalSession() {
 			writeJSONError(w, http.StatusNotImplemented,
-				"открытие папки недоступно в Docker. Скачайте файл или скопируйте путь.", target)
+				"открытие папки недоступно без графического окружения. Скачайте файл или скопируйте путь.", target)
 			return
 		}
 
@@ -85,7 +101,26 @@ func openFolderHandler(outputDir string) http.HandlerFunc {
 	}
 }
 
+func existingFile(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		return "", err
+	}
+	if info.IsDir() {
+		return "", fmt.Errorf("это папка, а не файл")
+	}
+	return filepath.EvalSymlinks(abs)
+}
+
+// isDockerFunction is a variable so tests can simulate a container.
+var isDockerFunction = isDockerEnvironment
+
 func writeJSONError(w http.ResponseWriter, status int, message, path string) {
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	resp := map[string]string{"error": message}
 	if path != "" {
@@ -140,16 +175,19 @@ func isWithinDir(base, target string) bool {
 }
 
 func isDockerEnvironment() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("DOCKER"))) {
-	case "1", "true", "yes":
-		return true
-	}
 	for _, marker := range []string{"/.dockerenv", "/run/.containerenv"} {
 		if _, err := os.Stat(marker); err == nil {
 			return true
 		}
 	}
 	return false
+}
+
+func hasGraphicalSession() bool {
+	if runtime.GOOS != "linux" {
+		return true
+	}
+	return os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""
 }
 
 // openInFileManager opens the file's folder and selects the file when the
@@ -174,10 +212,30 @@ func openInFileManager(filePath string) error {
 		return startDetached("open", "-R", abs)
 
 	case "linux":
-		if os.Getenv("DISPLAY") == "" && os.Getenv("WAYLAND_DISPLAY") == "" {
+		if !hasGraphicalSession() {
 			return errors.New("графическая сессия не обнаружена (headless Linux)")
 		}
 		dir := filepath.Dir(abs)
+		fileURL := (&url.URL{Scheme: "file", Path: abs}).String()
+
+		// Desktop file managers can select the exact file via D-Bus.
+		if _, err := exec.LookPath("dbus-send"); err == nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			err := exec.CommandContext(ctx, "dbus-send",
+				"--session",
+				"--dest=org.freedesktop.FileManager1",
+				"--type=method_call",
+				"/org/freedesktop/FileManager1",
+				"org.freedesktop.FileManager1.ShowItems",
+				"array:string:"+fileURL,
+				"string:",
+			).Run()
+			cancel()
+			if err == nil {
+				return nil
+			}
+		}
+
 		candidates := [][]string{
 			{"nautilus", "--select", abs},
 			{"dolphin", "--select", abs},
@@ -192,20 +250,26 @@ func openInFileManager(filePath string) error {
 				return nil
 			}
 		}
-		if _, err := exec.LookPath("xdg-open"); err != nil {
-			return errors.New("файловый менеджер не найден")
-		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		out, err := exec.CommandContext(ctx, "xdg-open", dir).CombinedOutput()
-		if err != nil {
+		if _, err := exec.LookPath("xdg-open"); err == nil {
+			out, err := exec.CommandContext(ctx, "xdg-open", dir).CombinedOutput()
+			if err == nil {
+				return nil
+			}
 			msg := strings.TrimSpace(string(out))
 			if msg != "" {
 				return fmt.Errorf("xdg-open: %v: %s", err, msg)
 			}
 			return fmt.Errorf("xdg-open: %w", err)
 		}
-		return nil
+		if _, err := exec.LookPath("gio"); err == nil {
+			if out, err := exec.CommandContext(ctx, "gio", "open", dir).CombinedOutput(); err != nil {
+				return fmt.Errorf("gio open: %v: %s", err, strings.TrimSpace(string(out)))
+			}
+			return nil
+		}
+		return errors.New("файловый менеджер не найден")
 
 	default:
 		return fmt.Errorf("неподдерживаемая ОС: %s", runtime.GOOS)

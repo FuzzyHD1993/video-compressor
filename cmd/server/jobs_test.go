@@ -164,6 +164,44 @@ func TestOutputCollisionConcurrent(t *testing.T) {
 	}
 }
 
+func TestBatchDefaultOutputNextToSource(t *testing.T) {
+	resetJobStore(t)
+	dir := t.TempDir()
+	file := filepath.Join(dir, "video.mp4")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest("POST", "/api/batch",
+		strings.NewReader(`{"input_dir":"`+dir+`","profile":"fast"}`))
+	rec := httptest.NewRecorder()
+	batchHandler(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("batch = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Jobs []jobRef `json:"jobs"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Jobs) != 1 {
+		t.Fatalf("jobs = %d, want 1", len(resp.Jobs))
+	}
+	job, ok := getJob(resp.Jobs[0].ID)
+	if !ok {
+		t.Fatal("job not found")
+	}
+	if filepath.Dir(job.OutputPath) != dir {
+		t.Errorf("output %q, want next to source %q", job.OutputPath, dir)
+	}
+	select {
+	case <-jobQueue:
+	default:
+	}
+}
+
 func TestRunningJobCancel(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell-script fake ffmpeg is POSIX-only")

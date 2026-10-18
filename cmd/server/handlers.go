@@ -185,21 +185,21 @@ func batchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	outDir := strings.TrimSpace(req.OutputDir)
-	if outDir == "" {
-		outDir = outputDir
-	}
-	outDir, err = filepath.Abs(outDir)
-	if err != nil {
-		http.Error(w, "Некорректный output_dir", http.StatusBadRequest)
-		return
-	}
-	if err := os.MkdirAll(outDir, 0o755); err != nil {
-		http.Error(w, "Не удалось создать output_dir", http.StatusInternalServerError)
-		return
+	var outAbs string
+	if outDir != "" {
+		outAbs, err = filepath.Abs(outDir)
+		if err != nil {
+			http.Error(w, "Некорректный output_dir", http.StatusBadRequest)
+			return
+		}
+		if err := os.MkdirAll(outAbs, 0o755); err != nil {
+			http.Error(w, "Не удалось создать output_dir", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	profile := normalizeProfile(req.Profile)
-	files, err := scanVideoFiles(inputDir, outDir)
+	files, err := scanVideoFiles(inputDir, outAbs)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -215,15 +215,24 @@ func batchHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			continue
 		}
-		outputPath := batchOutputPath(inputDir, file, outDir, profile)
+		// No output folder given: save next to each source video.
+		targetDir := outAbs
+		if targetDir == "" {
+			targetDir = filepath.Dir(file)
+		}
+		outputPath := batchOutputPath(inputDir, file, targetDir, profile)
 		job := newJob(filepath.Base(file), file, outputPath, profile, true, info.Size())
 		enqueueJob(job)
 		refs = append(refs, jobRef{ID: job.ID, Filename: job.Filename})
 	}
 
+	resultDir := outAbs
+	if resultDir == "" {
+		resultDir = "рядом с исходными видео"
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"jobs": refs, "count": len(refs), "profile": profile, "output_dir": outDir,
+		"jobs": refs, "count": len(refs), "profile": profile, "output_dir": resultDir,
 	})
 }
 
@@ -259,9 +268,28 @@ func downloadHandler(dir string) http.HandlerFunc {
 			http.Error(w, "Только GET", http.StatusMethodNotAllowed)
 			return
 		}
+
+		if jobID := r.URL.Query().Get("jobId"); jobID != "" {
+			job, ok := getJob(jobID)
+			if !ok || job.Status != "done" || job.OutputPath == "" {
+				http.Error(w, "Файл не найден", http.StatusNotFound)
+				return
+			}
+			resolved, err := existingFile(job.OutputPath)
+			if err != nil {
+				http.Error(w, "Файл не найден", http.StatusNotFound)
+				return
+			}
+			w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{
+				"filename": filepath.Base(resolved),
+			}))
+			http.ServeFile(w, r, resolved)
+			return
+		}
+
 		name := r.URL.Query().Get("file")
 		if name == "" {
-			http.Error(w, "file required", http.StatusBadRequest)
+			http.Error(w, "file или jobId required", http.StatusBadRequest)
 			return
 		}
 		if filepath.Base(name) != name || name == "." || name == ".." {

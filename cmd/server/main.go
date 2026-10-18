@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const appVersion = "2.1.1"
+const appVersion = "2.1.2"
 
 func main() {
 	prepareWorkingDir()
