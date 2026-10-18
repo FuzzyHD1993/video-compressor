@@ -14,6 +14,7 @@ GPU (NVIDIA NVENC), при отсутствии аппаратного энко�
 - [Быстрый старт (Linux, GPU)](#быстрый-старт-linux-gpu)
 - [Запуск без Docker](#запуск-без-docker)
 - [Windows: один `.exe`](#-windows-один-exe-без-установки)
+- [Открыть папку с файлом](#-открыть-папку-с-файлом)
 - [API](#api)
 - [CI и релизы](#ci-и-релизы)
 - [Разработка](#разработка)
@@ -26,6 +27,8 @@ GPU (NVIDIA NVENC), при отсутствии аппаратного энко�
 - 🖥 Автоматический fallback на CPU (`libx265`)
 - 🎚 Три профиля качества: 1080p / 720p / 480p
 - 📊 Прогресс обработки в реальном времени
+- 📂 Кнопка «Открыть папку» с выделением готового файла (Windows/macOS/Linux)
+- ⬇️ Скачивание результата прямо из веб-интерфейса
 - 🐳 Docker-образ с FFmpeg и GPU passthrough
 - 🪟 **Windows: один `.exe`** — FFmpeg и веб-интерфейс встроены, ничего ставить не нужно
 - 🧰 Установка на Windows через WSL2 (Docker Desktop или Podman)
@@ -40,6 +43,8 @@ GPU (NVIDIA NVENC), при отсутствии аппаратного энко�
    перекодирует видео с масштабированием и сохранением пропорций.
 4. Прогресс передаётся в браузер через `GET /status?jobId=...`.
 5. Готовый файл появляется в `output/`; исходник из `temp/` удаляется.
+6. Кнопки «📂 Открыть папку» и «⬇️ Скачать» позволяют открыть папку с
+   выделенным файлом или скачать результат.
 
 Одновременно выполняется до двух GPU-задач (ограничение NVENC-сессий) или
 `runtime.NumCPU()` CPU-задач. Количество можно переопределить через
@@ -99,6 +104,8 @@ curl http://localhost:8095/health
 
 `temp/` и `output/` смонтированы из репозитория, поэтому результаты видны на
 хосте. Внутри контейнера приложение слушает `8080`, наружу опубликован `8095`.
+Кнопка «Открыть папку» в Docker возвращает `501`: используйте скачивание или
+скопируйте путь внутри контейнера.
 
 ## Запуск без Docker
 
@@ -174,6 +181,24 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\install-video-compressor.ps1
 ```
 
+## 📂 Открыть папку с файлом
+
+После сжатия нажмите **«📂 Открыть папку»** — откроется проводник (Windows),
+Finder (macOS) или файловый менеджер (Linux) с выделенным файлом.
+
+- **Windows:** `explorer.exe /select,<file>`
+- **macOS:** `open -R <file>`
+- **Linux:** `nautilus --select`, `dolphin --select`, `nemo`, `thunar` или
+  `xdg-open` на папку.
+
+Если открыть папку не удалось (headless Linux, Docker, нет файлового
+менеджера), интерфейс показывает путь и предлагает скопировать его в буфер
+обмена. В Docker endpoint отвечает `501 Not Implemented` — используйте кнопку
+**«⬇️ Скачать»**.
+
+Endpoint принимает только файлы внутри `output/`, поэтому не может открыть
+произвольный путь на сервере.
+
 ## 🔐 Подпись кода
 
 Windows-сборки подписываются через **SignPath Foundation**, когда в репозитории
@@ -224,8 +249,36 @@ curl "http://localhost:8095/status?jobId=job_1792340242306434000"
 ### `GET /health`
 
 ```json
-{"status":"ok","encoder":"hevc_nvenc","version":"1.1.0"}
+{"status":"ok","encoder":"hevc_nvenc","version":"1.2.2"}
 ```
+
+### `POST /api/open-folder`
+
+Открывает папку с готовым файлом и выделяет его. Принимает `path` или `jobId`:
+
+```bash
+curl -X POST http://localhost:8095/api/open-folder \
+  -H "Content-Type: application/json" \
+  -d '{"jobId":"job_1792340242306434000"}'
+# {"status":"opened","path":"/home/user/video-compressor/output/movie_medium.mp4"}
+```
+
+При ошибке возвращается JSON с полем `error` и, где возможно, `path`:
+
+- `403` — путь вне `output/`;
+- `404` — файл или задача не найдены;
+- `501` — открытие недоступно в Docker;
+- `500` — нет GUI/файлового менеджера (путь возвращается для fallback).
+
+### `GET /download?file=...`
+
+Скачивает готовый файл из `output/`:
+
+```bash
+curl -OJ "http://localhost:8095/download?file=movie_medium.mp4"
+```
+
+Имя файла проверяется — выйти за пределы `output/` через `../` нельзя.
 
 ### `GET /`
 
@@ -285,6 +338,8 @@ cmd/server/
   embed_other.go       no-op для Linux/Docker
   static.go            встроенный index.html
   static/index.html    веб-интерфейс
+  opener.go            открытие папки в Explorer/Finder/файловом менеджере
+  opener_test.go       валидация путей, Docker/headless fallback
   main_test.go         тесты аргументов, энкодера, API
 docs/
   WINDOWS.md           WSL2, Docker Desktop, Podman CDI
@@ -303,8 +358,10 @@ docker-compose.yml
 |---|---|
 | Linux + GTX 1660 SUPER (FFmpeg 9.x) | ✅ `hevc_nvenc`, 1080p → 720p/480p |
 | Docker + NVIDIA Container Toolkit / CDI | ✅ GPU внутри контейнера, upload → HEVC |
+| Кнопка «Открыть папку»: Docker `501`, headless `500` + путь | ✅ unit/e2e |
+| Скачивание результата через `/download` | ✅ |
 | Windows `.exe` под Wine | ✅ распаковка FFmpeg, UI, `/health`, CPU-fallback |
-| Реальный Windows + NVIDIA GPU | ⏳ требуется физический хост |
+| `explorer /select` на реальном Windows | ⏳ требуется физический хост |
 
 ## Диагностика
 
@@ -317,6 +374,7 @@ docker-compose.yml
 | Контейнер не видит GPU | `nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml`, перезапустите Docker/Podman. |
 | Подпись пропущена в CI | Не заданы `SIGNPATH_API_TOKEN`/`SIGNPATH_ORGANIZATION_ID`; см. [docs/CODE_SIGNING.md](docs/CODE_SIGNING.md). |
 | SmartScreen предупреждает | Нажмите «Подробнее → Выполнить всё равно»; репутация накапливается со временем. |
+| «Открыть папку» не работает | В Docker это ожидаемо (`501`) — используйте «Скачать». На headless Linux скопируйте показанный путь. |
 | WSL2: нет `/dev/dxg` | Обновите Windows-драйвер NVIDIA и выполните `wsl --update`; Linux-драйвер внутри WSL не нужен. |
 
 Логи:
@@ -342,6 +400,8 @@ docker compose logs -f
 - Сервис не имеет аутентификации и предназначен для локальной сети. Не
   публикуйте его в интернет без reverse proxy и авторизации.
 - Файлы с одинаковым именем и профилем качества перезаписываются в `output/`.
+- «Открыть папку» работает только на машине, где запущен сервер, и только для
+  файлов внутри `output/`. В Docker GUI хоста недоступен — используйте скачивание.
 - `.exe` не подписан, пока в репозитории не настроены секреты SignPath.
 - FFmpeg распаковывается в `%TEMP%` и не удаляется автоматически; при нехватке
   места удалите `video-compressor-ffmpeg-*.exe` вручную.

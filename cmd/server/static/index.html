@@ -33,6 +33,14 @@ h1{text-align:center;font-size:32px;margin-bottom:5px}
 .progress-bar{height:100%;width:0%;background:linear-gradient(90deg,#58a6ff,#1f6feb);border-radius:4px;transition:width .5s}
 .download-link{display:inline-block;margin-top:8px;padding:12px 30px;background:#238636;color:#fff;text-decoration:none;border-radius:10px;font-weight:600;transition:.2s}
 .download-link:hover{background:#2ea043}
+.result{margin-top:16px;padding:16px;background:#0d1117;border:1px solid #30363d;border-radius:12px;display:none}
+.result.show{display:block}
+.result-path{font-size:13px;color:#8b949e;word-break:break-all;margin-bottom:12px}
+.result-actions{display:flex;gap:10px;flex-wrap:wrap}
+.btn-open,.result .download-link{flex:1;min-width:180px;text-align:center;padding:12px 18px;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;border:none;text-decoration:none;margin-top:0}
+.btn-open{background:#1f6feb;color:#fff;transition:.2s}
+.btn-open:hover:not(:disabled){background:#388bfd}
+.btn-open:disabled{opacity:.5;cursor:not-allowed}
 .footer{margin-top:20px;text-align:center;font-size:12px;color:#484f58}
 </style>
 </head>
@@ -56,6 +64,13 @@ h1{text-align:center;font-size:32px;margin-bottom:5px}
 <button class="btn-compress" id="compressBtn">⚡ Сжать!</button>
 <div class="status" id="status">Выберите видео</div>
 <div class="progress" id="progress"><div class="progress-bar" id="progressBar"></div></div>
+<div class="result" id="result">
+  <div class="result-path" id="resultPath"></div>
+  <div class="result-actions">
+    <button class="btn-open" id="openFolderBtn">📂 Открыть папку</button>
+    <a class="download-link" id="downloadLink" href="#">⬇️ Скачать</a>
+  </div>
+</div>
 <div class="footer">💡 Работает локально · GPU NVENC при наличии</div>
 </div>
 <script>
@@ -66,27 +81,38 @@ const st=document.getElementById("status");
 const pg=document.getElementById("progress");
 const pb=document.getElementById("progressBar");
 const qb=document.querySelectorAll(".quality-btn");
+const result=document.getElementById("result");
+const resultPath=document.getElementById("resultPath");
+const openBtn=document.getElementById("openFolderBtn");
+const downloadLink=document.getElementById("downloadLink");
 let file=null;
 let quality="medium";
 let jobId=null;
 let interval=null;
+let lastOutputPath="";
+
+function notify(msg,type){
+st.textContent=msg;
+st.style.color=type==="error"?"#f85149":type==="success"?"#3fb950":"#d29922";
+}
 
 dz.addEventListener("dragover",e=>{e.preventDefault();dz.style.borderColor="#58a6ff"});
 dz.addEventListener("dragleave",()=>{dz.style.borderColor="#30363d"});
-dz.addEventListener("drop",e=>{e.preventDefault();dz.style.borderColor="#30363d";if(e.dataTransfer.files.length){file=e.dataTransfer.files[0];document.getElementById("fileInfo").innerHTML="✅ "+file.name;st.textContent="Готов";st.style.color="#d29922"}});
-fi.addEventListener("change",()=>{if(fi.files.length){file=fi.files[0];document.getElementById("fileInfo").innerHTML="✅ "+file.name;st.textContent="Готов";st.style.color="#d29922"}});
+dz.addEventListener("drop",e=>{e.preventDefault();dz.style.borderColor="#30363d";if(e.dataTransfer.files.length){file=e.dataTransfer.files[0];document.getElementById("fileInfo").innerHTML="✅ "+file.name;notify("Готов")}});
+fi.addEventListener("change",()=>{if(fi.files.length){file=fi.files[0];document.getElementById("fileInfo").innerHTML="✅ "+file.name;notify("Готов")}});
 qb.forEach(b=>{b.onclick=function(){qb.forEach(x=>x.classList.remove("active"));this.classList.add("active");quality=this.dataset.quality}});
 
 cb.onclick=async function(){
-if(!file){st.textContent="❌ Выберите видео";st.style.color="#f85149";return}
+if(!file){notify("❌ Выберите видео","error");return}
 const fd=new FormData();fd.append("video",file);fd.append("quality",quality);
-this.disabled=true;this.textContent="⏳ Сжатие...";st.textContent="⏳ Обработка...";st.style.color="#d29922";pb.style.width="0%";
+this.disabled=true;this.textContent="⏳ Сжатие...";notify("⏳ Обработка...");pb.style.width="0%";
+result.classList.remove("show");lastOutputPath="";
 try{
 const r=await fetch("/upload",{method:"POST",body:fd});
 if(!r.ok)throw new Error(await r.text());
 const d=await r.json();jobId=d.jobId;
 if(interval)clearInterval(interval);interval=setInterval(checkStatus,500);
-}catch(e){st.textContent="❌ "+e.message;st.style.color="#f85149";this.disabled=false;this.textContent="⚡ Сжать!"}
+}catch(e){notify("❌ "+e.message,"error");this.disabled=false;this.textContent="⚡ Сжать!"}
 }
 
 async function checkStatus(){
@@ -99,17 +125,69 @@ pb.style.width=job.progress+"%";
 if(job.status==="done"){
 clearInterval(interval);
 const size=(job.outputSize/1024/1024).toFixed(1);
-st.innerHTML="✅ Готово! Размер: "+size+" MB <a href=\"/download?file="+job.outputName+"\" class=\"download-link\">⬇️ Скачать</a>";
-st.style.color="#3fb950";
+lastOutputPath=job.outputPath||(job.outputName?("output/"+job.outputName):"");
+resultPath.textContent="📄 "+lastOutputPath;
+if(job.outputName){
+downloadLink.href="/download?file="+encodeURIComponent(job.outputName);
+}
+result.classList.add("show");
+notify("✅ Готово! Размер: "+size+" MB","success");
 cb.disabled=false;cb.textContent="⚡ Сжать!";
 file=null;fi.value="";document.getElementById("fileInfo").textContent="или перетащите сюда";
 setTimeout(()=>{pg.style.display="none";pb.style.width="0%"},3000);
 }else if(job.status==="error"){
 clearInterval(interval);
-st.textContent="❌ "+job.error;st.style.color="#f85149";
+notify("❌ "+job.error,"error");
 cb.disabled=false;cb.textContent="⚡ Сжать!";
 }
 }catch(e){console.log(e)}
+}
+
+openBtn.onclick=openFolder;
+
+async function openFolder(){
+const path=lastOutputPath;
+if(!path){notify("❌ Путь к файлу не найден","error");return}
+openBtn.disabled=true;
+try{
+const r=await fetch("/api/open-folder",{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({jobId:jobId,path:path}),
+});
+const d=await r.json().catch(()=>({}));
+if(!r.ok){
+showPathDialog(d.path||path,d.error||("HTTP "+r.status));
+return;
+}
+notify("📂 Папка открыта","success");
+}catch(e){
+showPathDialog(path,e.message);
+}finally{
+openBtn.disabled=false;
+}
+}
+
+function showPathDialog(path,error){
+const msg="Не удалось открыть папку."+(error?("\n"+error):"")+"\n\nПуть к файлу:\n"+path+"\n\nСкопировать путь в буфер обмена?";
+if(confirm(msg))copyPath(path);
+}
+
+async function copyPath(path){
+try{
+if(navigator.clipboard&&window.isSecureContext){
+await navigator.clipboard.writeText(path);
+}else{
+const ta=document.createElement("textarea");
+ta.value=path;ta.style.position="fixed";ta.style.opacity="0";
+document.body.appendChild(ta);ta.select();
+document.execCommand("copy");
+document.body.removeChild(ta);
+}
+notify("📋 Путь скопирован","success");
+}catch(e){
+prompt("Скопируйте путь вручную:",path);
+}
 }
 
 st.textContent="Выберите видео";

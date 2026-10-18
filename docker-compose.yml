@@ -11,6 +11,7 @@ services:
       - PORT=8080
       - NO_BROWSER=1
       - MAX_WORKERS=2
+      - DOCKER=true
     volumes:
       - ./output:/app/output
       - ./temp:/app/temp

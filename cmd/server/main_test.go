@@ -175,7 +175,7 @@ func TestHealthHandler(t *testing.T) {
 		t.Fatalf("GET /health = %d, want 200", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{`"status":"ok"`, `"encoder":"hevc_nvenc"`, `"version":"1.1.0"`} {
+	for _, want := range []string{`"status":"ok"`, `"encoder":"hevc_nvenc"`, `"version":"` + appVersion + `"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("health body missing %s: %s", want, body)
 		}

@@ -28,7 +28,8 @@ COPY --from=builder /app/video-compressor .
 
 ENV PORT=8080 \
     NO_BROWSER=1 \
-    MAX_WORKERS=2
+    MAX_WORKERS=2 \
+    DOCKER=true
 
 EXPOSE 8080
 

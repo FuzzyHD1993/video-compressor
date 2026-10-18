@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"os/exec"
@@ -24,6 +25,7 @@ type Job struct {
 	Status     string `json:"status"`
 	Progress   int    `json:"progress"`
 	OutputName string `json:"outputName,omitempty"`
+	OutputPath string `json:"outputPath,omitempty"`
 	Error      string `json:"error,omitempty"`
 	InputSize  int64  `json:"inputSize"`
 	OutputSize int64  `json:"outputSize,omitempty"`
@@ -45,7 +47,7 @@ var (
 	semaphore chan struct{}
 )
 
-const appVersion = "1.1.0"
+const appVersion = "1.2.2"
 
 func main() {
 	prepareWorkingDir()
@@ -75,6 +77,8 @@ func main() {
 	http.HandleFunc("/upload", uploadHandler(ffmpegPath, encoder))
 	http.HandleFunc("/status", statusHandler)
 	http.HandleFunc("/health", healthHandler(encoder))
+	http.HandleFunc("/download", downloadHandler("./output"))
+	http.HandleFunc("/api/open-folder", openFolderHandler("./output"))
 
 	port := envOr("PORT", "8095")
 	url := "http://localhost:" + port
@@ -456,6 +460,9 @@ func processJob(job *Job, ffmpegPath, inputPath, outputPath string, opts Options
 	job.OutputSize = info.Size()
 	job.Status = "done"
 	job.Progress = 100
+	if abs, err := filepath.Abs(outputPath); err == nil {
+		job.OutputPath = abs
+	}
 	jobMutex.Unlock()
 	log.Printf("✅ Готово: %s (%.1f МБ → %.1f МБ)",
 		job.Filename, float64(job.InputSize)/1024/1024, float64(info.Size())/1024/1024)
@@ -541,6 +548,34 @@ func isVideoExtension(ext string) bool {
 		}
 	}
 	return false
+}
+
+func downloadHandler(outputDir string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			http.Error(w, "Только GET", http.StatusMethodNotAllowed)
+			return
+		}
+		name := r.URL.Query().Get("file")
+		if name == "" {
+			http.Error(w, "file required", http.StatusBadRequest)
+			return
+		}
+		if filepath.Base(name) != name || name == "." || name == ".." {
+			http.Error(w, "Недопустимое имя файла", http.StatusBadRequest)
+			return
+		}
+		path := filepath.Join(outputDir, name)
+		resolved, err := resolveOutputFile(outputDir, path)
+		if err != nil {
+			http.Error(w, "Файл не найден", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{
+			"filename": name,
+		}))
+		http.ServeFile(w, r, resolved)
+	}
 }
 
 func statusHandler(w http.ResponseWriter, r *http.Request) {
